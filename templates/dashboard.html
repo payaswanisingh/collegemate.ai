@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard — CampusMate AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+</head>
+<body>
+
+    <div class="bg-scene" aria-hidden="true">
+        <div class="blob blob-blue"></div>
+        <div class="blob blob-purple"></div>
+        <div class="blob blob-cyan"></div>
+        <div class="spotlight"></div>
+        <div class="grid-veil"></div>
+    </div>
+
+    <div class="auth-shell">
+        <div class="dash-topbar">
+            <div class="brand">
+                <span class="brand-ring"></span>
+                <span>
+                    CampusMate AI
+                    <span class="brand-subtitle">Your Smart Campus Assistant</span>
+                </span>
+            </div>
+            <form method="GET" action="{{ url_for('auth.logout') }}" style="margin:0;">
+                <a href="{{ url_for('auth.logout') }}" class="btn btn-danger-outline">Log out</a>
+            </form>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div style="max-width: 560px; margin: 0 auto; padding: 0 20px; position: relative; z-index: 1;">
+                <ul class="flash-list">
+                    {% for category, message in messages %}
+                        <li class="flash-item flash-{{ category }}">{{ message }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        {% endwith %}
+
+        <div class="dash-main">
+            <div class="glass-card dash-card">
+                <div class="dash-avatar">{{ (user.full_name or "U")[0]|upper }}</div>
+                <h1>Welcome, {{ user.full_name }}</h1>
+                <p>Ready to get answers about your college? CampusMate AI is one click away.</p>
+
+                <div class="dash-actions">
+                    <a href="{{ url_for('chatbot_page') }}" class="btn btn-primary btn-block">Open CampusMate AI</a>
+                    <a href="{{ url_for('auth.logout') }}" class="btn btn-ghost btn-block">Log out</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

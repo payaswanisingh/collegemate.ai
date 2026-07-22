@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CampusMate AI — Your Smart Campus Assistant</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <div class="bg-scene" aria-hidden="true">
+        <div class="blob blob-blue"></div>
+        <div class="blob blob-purple"></div>
+        <div class="blob blob-cyan"></div>
+        <div class="spotlight"></div>
+        <div class="grid-veil"></div>
+        <div class="grain"></div>
+    </div>
+
+    <div class="app-shell">
+
+        <button id="sidebarToggle" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="17" x2="20" y2="17"></line></svg>
+        </button>
+
+        <div id="sidebarScrim" class="sidebar-scrim"></div>
+
+        <aside id="sidebarPanel" class="sidebar">
+            <div class="sidebar-top">
+                <div class="brand-mark">
+                    <span class="brand-ring"></span>
+                    <span class="brand-glyph">C</span>
+                </div>
+                <div class="brand-copy">
+                    <div class="brand-title">CampusMate AI</div>
+                    <div class="brand-subtitle">Your Smart Campus Assistant</div>
+                </div>
+            </div>
+
+            <button id="newChatBtn" class="new-chat-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                <span>New chat</span>
+            </button>
+
+            <nav class="sidebar-nav">
+                <div class="nav-label">Quick categories</div>
+                <div id="sidebarCategories" class="nav-list"></div>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="sidebar-footer-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    <span>Settings</span>
+                </div>
+            </div>
+        </aside>
+
+        <div class="main-panel">
+            <header class="topbar">
+                <div class="topbar-left">
+                    <span class="topbar-title">CampusMate AI</span>
+                </div>
+                <div class="topbar-right">
+                    <div id="clock" class="clock"></div>
+                    <button id="themeToggle" class="icon-btn" aria-label="Toggle dark mode">
+                        <svg class="theme-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                    </button>
+                </div>
+            </header>
+
+            <section class="chat-container">
+                <div id="chatList" class="chat-list"></div>
+
+                <div class="quick-panel">
+                    <div class="quick-panel-head">
+                        <div>
+                            <div class="section-label">Quick topics</div>
+                            <div class="section-title">Get started in seconds.</div>
+                        </div>
+                    </div>
+                    <div id="quickPrompts" class="quick-grid"></div>
+                </div>
+            </section>
+
+            <footer class="composer">
+                <div class="composer-card">
+                    <textarea id="questionInput" class="message-input" placeholder="Ask anything about your college..." rows="1"></textarea>
+                    <button id="sendBtn" class="send-btn" aria-label="Send message">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="send-icon"><path d="M22 2L11 13"></path><path d="M22 2L15 22"></path><path d="M11 13L2 9"></path></svg>
+                    </button>
+                </div>
+                <div class="composer-meta">Enter to send • Shift + Enter for a new line</div>
+            </footer>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+    <script src="/static/script.js"></script>
+</body>
+</html>

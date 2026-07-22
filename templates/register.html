@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register — CampusMate AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+</head>
+<body>
+
+    <div class="bg-scene" aria-hidden="true">
+        <div class="blob blob-blue"></div>
+        <div class="blob blob-purple"></div>
+        <div class="blob blob-cyan"></div>
+        <div class="spotlight"></div>
+        <div class="grid-veil"></div>
+    </div>
+
+    <div class="auth-shell">
+        <nav class="auth-nav">
+            <a href="{{ url_for('landing') }}" class="brand">
+                <span class="brand-ring"></span>
+                <span>
+                    CampusMate AI
+                    <span class="brand-subtitle">Your Smart Campus Assistant</span>
+                </span>
+            </a>
+        </nav>
+
+        <div class="auth-center">
+            <div class="glass-card auth-card wide">
+                <div class="auth-card-header">
+                    <h1>Create your account</h1>
+                    <p>Join CampusMate AI to get instant answers about your college.</p>
+                </div>
+
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        <ul class="flash-list">
+                            {% for category, message in messages %}
+                                <li class="flash-item flash-{{ category }}">{{ message }}</li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                {% endwith %}
+
+                <form method="POST" action="{{ url_for('auth.register') }}" enctype="multipart/form-data" id="registerForm">
+                    <div class="form-grid">
+                        <div class="field">
+                            <label for="user_type">I am a</label>
+                            <select id="user_type" name="user_type" required>
+                                <option value="" disabled {% if not user_type %}selected{% endif %}>Select account type</option>
+                                <option value="college_student" {% if user_type == 'college_student' %}selected{% endif %}>College Student</option>
+                                <option value="school_student" {% if user_type == 'school_student' %}selected{% endif %}>School Student</option>
+                                <option value="parent" {% if user_type == 'parent' %}selected{% endif %}>Parent</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-grid two-col" style="margin-top:16px;">
+                        <div class="field">
+                            <label for="full_name">Full name</label>
+                            <input type="text" id="full_name" name="full_name" placeholder="Asha Verma"
+                                   value="{{ full_name or '' }}" required>
+                        </div>
+
+                        <div class="field">
+                            <label for="email">Email</label>
+                            <input type="email" id="email" name="email" placeholder="you@example.com"
+                                   value="{{ email or '' }}" required>
+                        </div>
+
+                        <div class="field">
+                            <label for="password">Password</label>
+                            <input type="password" id="password" name="password" placeholder="Create a password" required>
+                            <div class="strength-meter"><div class="strength-meter-fill" id="strengthFill"></div></div>
+                            <div class="strength-label" id="strengthLabel"></div>
+                        </div>
+
+                        <div class="field">
+                            <label for="confirm_password">Confirm password</label>
+                            <input type="password" id="confirm_password" name="confirm_password" placeholder="Re-enter your password" required>
+                            <div class="match-hint" id="matchHint"></div>
+                        </div>
+
+                        <div class="field">
+                            <label for="phone_number">Phone number</label>
+                            <input type="tel" id="phone_number" name="phone_number" placeholder="+91 98765 43210"
+                                   value="{{ phone_number or '' }}" required>
+                        </div>
+
+                        <div class="field">
+                            <label for="profile_picture">Profile picture <span class="optional-tag">(optional)</span></label>
+                            <input type="file" id="profile_picture" name="profile_picture" accept="image/*">
+                        </div>
+                    </div>
+
+                    <!-- College student fields -->
+                    <div class="form-grid two-col type-fields" id="college-fields" style="margin-top:16px;">
+                        <div class="field">
+                            <label for="roll_number">Roll number</label>
+                            <input type="text" id="roll_number" name="roll_number" placeholder="e.g. CS21B045"
+                                   value="{{ roll_number or '' }}">
+                        </div>
+
+                        <div class="field">
+                            <label for="college_name">College name</label>
+                            <input type="text" id="college_name" name="college_name" placeholder="Your college name"
+                                   value="{{ college_name or '' }}">
+                        </div>
+
+                        <div class="field">
+                            <label for="department">Department</label>
+                            <select id="department" name="department">
+                                <option value="" disabled {% if not department %}selected{% endif %}>Select department</option>
+                                {% for dept in ['Computer Science', 'Information Technology', 'Electronics & Communication', 'Electrical Engineering', 'Mechanical Engineering', 'Civil Engineering', 'Business Administration', 'Commerce'] %}
+                                <option value="{{ dept }}" {% if department == dept %}selected{% endif %}>{{ dept }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="field">
+                            <label for="semester">Semester</label>
+                            <select id="semester" name="semester">
+                                <option value="" disabled {% if not semester %}selected{% endif %}>Select semester</option>
+                                {% for sem in range(1, 9) %}
+                                <option value="{{ sem }}" {% if semester == sem|string %}selected{% endif %}>Semester {{ sem }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- School student fields -->
+                    <div class="form-grid two-col type-fields" id="school-fields" style="margin-top:16px; display:none;">
+                        <div class="field">
+                            <label for="school_name">School name</label>
+                            <input type="text" id="school_name" name="school_name" placeholder="Your school name"
+                                   value="{{ school_name or '' }}">
+                        </div>
+
+                        <div class="field">
+                            <label for="class_level">Class</label>
+                            <select id="class_level" name="class_level">
+                                <option value="" disabled {% if not class_level %}selected{% endif %}>Select class</option>
+                                {% for cls in range(6, 13) %}
+                                <option value="{{ cls }}" {% if class_level == cls|string %}selected{% endif %}>Class {{ cls }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="field" id="stream-field" style="display:none;">
+                            <label for="stream">Stream</label>
+                            <select id="stream" name="stream">
+                                <option value="" disabled {% if not stream %}selected{% endif %}>Select stream</option>
+                                {% for s in ['Science', 'Commerce', 'Arts'] %}
+                                <option value="{{ s }}" {% if stream == s %}selected{% endif %}>{{ s }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Parent: no extra fields beyond the common ones above -->
+                    <div class="type-fields" id="parent-fields" style="display:none;"></div>
+
+                    <label class="checkbox-row" style="margin-top: 18px;">
+                        <input type="checkbox" name="terms_accepted" required>
+                        <span>I agree to the <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.</span>
+                    </label>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary btn-block">Create account</button>
+                    </div>
+                </form>
+
+                <div class="auth-switch">
+                    Already have an account? <a href="{{ url_for('auth.login') }}">Log in</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='auth.js') }}"></script>
+</body>
+</html>

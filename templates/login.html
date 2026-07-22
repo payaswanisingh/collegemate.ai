@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log in — CampusMate AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+</head>
+<body>
+
+    <div class="bg-scene" aria-hidden="true">
+        <div class="blob blob-blue"></div>
+        <div class="blob blob-purple"></div>
+        <div class="blob blob-cyan"></div>
+        <div class="spotlight"></div>
+        <div class="grid-veil"></div>
+    </div>
+
+    <div class="auth-shell">
+        <nav class="auth-nav">
+            <a href="{{ url_for('landing') }}" class="brand">
+                <span class="brand-ring"></span>
+                <span>
+                    CampusMate AI
+                    <span class="brand-subtitle">Your Smart Campus Assistant</span>
+                </span>
+            </a>
+        </nav>
+
+        <div class="auth-center">
+            <div class="glass-card auth-card">
+                <div class="auth-card-header">
+                    <h1>Welcome back</h1>
+                    <p>Log in to continue to CampusMate AI.</p>
+                </div>
+
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        <ul class="flash-list">
+                            {% for category, message in messages %}
+                                <li class="flash-item flash-{{ category }}">{{ message }}</li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                {% endwith %}
+
+                <form method="POST" action="{{ url_for('auth.login') }}" class="form-grid">
+                    <div class="field">
+                        <label for="email">Email</label>
+                        <input type="email" id="email" name="email" placeholder="you@college.edu"
+                               value="{{ email or '' }}" required autofocus>
+                    </div>
+
+                    <div class="field">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" placeholder="Your password" required>
+                    </div>
+
+                    <label class="checkbox-row">
+                        <input type="checkbox" name="remember_me">
+                        <span>Remember me on this device</span>
+                    </label>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary btn-block">Log in</button>
+                    </div>
+                </form>
+
+                <div class="auth-switch">
+                    Don't have an account? <a href="{{ url_for('auth.register') }}">Register here</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

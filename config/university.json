@@ -1,0 +1,41 @@
+{
+  "college": {
+    "name": "Default University",
+    "slug": "default"
+  },
+  "departments": [
+    "Computer Science",
+    "Information Technology",
+    "Electronics & Communication",
+    "Electrical Engineering",
+    "Mechanical Engineering",
+    "Civil Engineering",
+    "Artificial Intelligence & Data Science",
+    "Internet of Things (IoT)",
+    "Biotechnology",
+    "Chemical Engineering",
+    "Automobile Engineering",
+    "Aerospace Engineering",
+    "Business Administration",
+    "Commerce",
+    "Physics",
+    "Mathematics",
+    "Chemistry",
+    "English",
+    "Other"
+  ],
+  "semesters": [
+    "Semester 1",
+    "Semester 2",
+    "Semester 3",
+    "Semester 4",
+    "Semester 5",
+    "Semester 6",
+    "Semester 7",
+    "Semester 8"
+  ],
+  "academic_years": [],
+  "sections": [],
+  "degree_programs": [],
+  "campuses": []
+}
