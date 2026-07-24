@@ -214,8 +214,66 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/'/g, '&#39;');
     }
 
-    function scrollToBottom() {
-        chatList.scrollTop = chatList.scrollHeight;
+    // ===== Auto-scroll =====
+    // The previous attempt scrolled `chatList` directly (chatList.scrollTop /
+    // chatList.scrollTo). That only works if #chatList itself is the element
+    // with overflow-y: auto/scroll. In this markup, #chatList is nested
+    // inside <section class="chat-container">, and it's entirely possible
+    // (and typical for this layout pattern) that the overflow/scrollbar
+    // actually lives on .chat-container or another ancestor, while #chatList
+    // just grows to fit its content with no scroll of its own. In that case
+    // chatList.scrollHeight === chatList.clientHeight always, so setting
+    // chatList.scrollTop does nothing — which is exactly why the fix
+    // appeared to have no effect.
+    //
+    // Fix: don't hardcode which element scrolls. Walk up from #chatList at
+    // runtime and find the nearest ancestor that actually has a vertical
+    // scrollbar (overflowY is auto/scroll AND scrollHeight > clientHeight).
+    // Cache it, but re-resolve if it's ever missing (e.g. after clearChat()
+    // rebuilds the list before layout has happened, or on a page with
+    // dynamic CSS).
+    const AUTO_SCROLL_THRESHOLD = 120; // px from bottom still counted as "at bottom"
+    let cachedScrollContainer = null;
+
+    function findScrollContainer(startEl) {
+        let node = startEl.parentElement;
+        while (node && node !== document.body && node !== document.documentElement) {
+            const style = window.getComputedStyle(node);
+            const canScrollY = style.overflowY === 'auto' || style.overflowY === 'scroll';
+            if (canScrollY && node.scrollHeight > node.clientHeight) {
+                return node;
+            }
+            node = node.parentElement;
+        }
+        // Nothing in between scrolls — the page itself is the scroll container.
+        return document.scrollingElement || document.documentElement;
+    }
+
+    function getChatScrollContainer() {
+        if (!cachedScrollContainer || !document.body.contains(cachedScrollContainer)) {
+            cachedScrollContainer = findScrollContainer(chatList);
+        }
+        return cachedScrollContainer;
+    }
+
+    function isNearBottom() {
+        const container = getChatScrollContainer();
+        return (
+            container.scrollHeight - container.scrollTop - container.clientHeight <=
+            AUTO_SCROLL_THRESHOLD
+        );
+    }
+
+    // Scrolls the *actual* scrolling ancestor to its latest content, after
+    // the new message node has already been inserted into the DOM.
+    function scrollToBottom(smooth = true) {
+        const container = getChatScrollContainer();
+        const behavior = smooth ? 'smooth' : 'auto';
+        if (container === document.documentElement || container === document.scrollingElement) {
+            window.scrollTo({ top: container.scrollHeight, behavior });
+        } else {
+            container.scrollTo({ top: container.scrollHeight, behavior });
+        }
     }
 
     // ===== Message Rendering =====
@@ -273,16 +331,38 @@ document.addEventListener('DOMContentLoaded', () => {
         return row;
     }
 
+    // ===== addMessage: the single function that appends BOTH user and bot
+    // bubbles to the DOM (chatList.appendChild(row)). This is the function
+    // that needed fixing — sendQuestion() calls it once for the user's
+    // message and once for the bot's answer, so fixing it here covers both
+    // append paths, plus every append from history/other callers.
     function addMessage(type, text, meta) {
+        // Read scroll position BEFORE appending: scrollHeight grows the
+        // instant the node is inserted, so checking after would always
+        // read "at bottom" even if the user had scrolled up to read
+        // history — that's the condition we need to preserve.
+        const shouldAutoScroll = isNearBottom();
+
         const row = createMessageRow(type, text, meta);
-        chatList.appendChild(row);
-        scrollToBottom();
+        chatList.appendChild(row); // <-- DOM update happens here
+
+        // appendChild() is synchronous and the browser recalculates
+        // scrollHeight/layout metrics immediately (no repaint needed to
+        // read them), so scrollToBottom() is safe to call right here with
+        // no setTimeout/requestAnimationFrame. It only fires post-append,
+        // and only for the user who was already following the bottom.
+        if (shouldAutoScroll) {
+            scrollToBottom();
+        }
     }
 
     function addTyping() {
+        const shouldAutoScroll = isNearBottom();
         const typingRow = createTypingIndicator();
         chatList.appendChild(typingRow);
-        scrollToBottom();
+        if (shouldAutoScroll) {
+            scrollToBottom();
+        }
         return typingRow;
     }
 

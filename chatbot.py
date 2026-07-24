@@ -28,6 +28,18 @@ from model import ChatbotModel
 logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------
+# Confidence and retrieval thresholds
+#
+# The neural classifier is used to detect the likely intent, but the
+# answer itself should come from the dataset whenever the incoming
+# question is similar to a known row. This avoids false fallbacks for
+# questions that already exist in data.csv and keeps the response
+# grounded in the training examples.
+# ------------------------------------------------------------------
+CONFIDENCE_THRESHOLD = 15.0
+SIMILARITY_THRESHOLD = 0.12
+
+# ------------------------------------------------------------------
 # Static Answers
 # ------------------------------------------------------------------
 
@@ -109,9 +121,15 @@ class Chatbot:
         )
 
         # ----------------------------
-        # Load Dataset
+        # Load Dataset and build an index for answer retrieval
         # ----------------------------
         self.df = load_dataset()
+        self.df = self.df.copy()
+        self.df["processed_question"] = self.df["question"].fillna("").apply(preprocess_text)
+        self.dataset_vectors = self.vectorizer.transform(self.df["processed_question"]).toarray()
+        self.known_question_lookup = {
+            processed: idx for idx, processed in enumerate(self.df["processed_question"].tolist())
+        }
 
         logger.info("Chatbot loaded successfully.")
 
@@ -121,6 +139,19 @@ class Chatbot:
         confidence = torch.max(probs).item()
 
         return confidence * 100
+
+    def _find_best_dataset_match(self, vector) -> Dict[str, Any]:
+        similarity = cosine_similarity(vector, self.dataset_vectors)[0]
+        best_index = int(np.argmax(similarity))
+        best_similarity = float(similarity[best_index])
+        matched_row = self.df.iloc[best_index]
+        return {
+            "index": best_index,
+            "similarity": best_similarity,
+            "matched_question": matched_row["question"],
+            "matched_category": matched_row["category"],
+            "answer": matched_row["answer"],
+        }
 
     def predict(self, question: str) -> Dict[str, Any]:
 
@@ -135,53 +166,41 @@ class Chatbot:
         )
 
         with torch.no_grad():
-
             logits = self.model(tensor)
-
             pred = torch.argmax(logits, dim=1).item()
-
             confidence = self.confidence_score(logits)
 
         intent = self.label_encoder.inverse_transform([pred])[0]
 
-        if confidence < 70:
-
+        if cleaned in self.known_question_lookup:
+            matched_row = self.df.iloc[self.known_question_lookup[cleaned]]
             return {
                 "question": question,
-                "intent": intent,
+                "intent": matched_row["category"],
                 "confidence": f"{confidence:.2f}%",
-                "matched_question": None,
-                "answer": "Sorry, I could not understand your question. Please contact the administration.",
+                "matched_question": matched_row["question"],
+                "answer": matched_row["answer"],
             }
 
-        subset = self.df[self.df["category"] == intent]
+        match = self._find_best_dataset_match(vector)
+        matched_question = match["matched_question"]
+        matched_category = match["matched_category"]
+        answer = match["answer"]
+        similarity = match["similarity"]
 
-        if subset.empty:
-
+        if similarity >= SIMILARITY_THRESHOLD or confidence >= CONFIDENCE_THRESHOLD:
             return {
                 "question": question,
-                "intent": intent,
+                "intent": matched_category,
                 "confidence": f"{confidence:.2f}%",
-                "matched_question": None,
-                "answer": ANSWER_MAP.get(intent, "Answer not available."),
+                "matched_question": matched_question,
+                "answer": answer,
             }
-
-        processed_questions = subset["question"].apply(preprocess_text)
-
-        candidate_vectors = self.vectorizer.transform(processed_questions).toarray()
-
-        similarity = cosine_similarity(vector, candidate_vectors)[0]
-
-        best_index = np.argmax(similarity)
-
-        matched_question = subset.iloc[best_index]["question"]
-
-        answer = ANSWER_MAP.get(intent, "Answer not available.")
 
         return {
             "question": question,
             "intent": intent,
             "confidence": f"{confidence:.2f}%",
-            "matched_question": matched_question,
-            "answer": answer,
+            "matched_question": None,
+            "answer": "Sorry, I could not understand your question. Please contact the administration.",
         }

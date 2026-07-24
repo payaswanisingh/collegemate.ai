@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 from typing import Tuple, Dict, Any
 
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -63,12 +64,47 @@ def split_dataset(df) -> Tuple[TensorDataset, TensorDataset, TensorDataset, int,
     # Preprocess text
     df["processed"] = df["question"].apply(preprocess_text)
 
+    # ------------------------------------------------------------------
+    # Stratified split with a fallback for rare categories.
+    #
+    # sklearn's stratified train_test_split requires at least 2 members
+    # per class per split. Since we split twice (train_val/test, then
+    # train/val), a class needs enough members to survive BOTH splits.
+    # This dataset has categories with as few as 1-2 examples (e.g.
+    # "Courses", "Email", "IT Support", "NCC", "NSS", "Visitors" have
+    # exactly 1; "Software", "Feedback" have 2) which makes a plain
+    # stratified split raise ValueError and crash before training ever
+    # starts. Any currently-deployed model/vectorizer/label_encoder
+    # therefore cannot have been produced by this script against this
+    # data.csv - they must be stale from a different dataset version.
+    #
+    # Fix: categories below MIN_SAMPLES_FOR_STRATIFY are routed entirely
+    # into the training set (so the model still learns them and they
+    # remain predictable at inference), while all other categories go
+    # through the normal 70/15/15 stratified split.
+    # ------------------------------------------------------------------
+    MIN_SAMPLES_FOR_STRATIFY = 3
+
+    category_counts = df["category"].value_counts()
+    rare_categories = category_counts[category_counts < MIN_SAMPLES_FOR_STRATIFY].index.tolist()
+
+    if rare_categories:
+        logger.warning(
+            "Categories with < %d examples will be placed entirely in the "
+            "training set (too few samples to stratify across train/val/test): %s",
+            MIN_SAMPLES_FOR_STRATIFY,
+            rare_categories,
+        )
+
+    rare_df = df[df["category"].isin(rare_categories)]
+    normal_df = df[~df["category"].isin(rare_categories)]
+
     # Stratified split into train+val and test (15% test)
     train_val_df, test_df = train_test_split(
-        df,
+        normal_df,
         test_size=0.15,
         random_state=42,
-        stratify=df["category"],
+        stratify=normal_df["category"],
     )
     # Further split train_val into train and validation (approx 15% of original = 0.176 of train_val)
     train_df, val_df = train_test_split(
@@ -77,6 +113,10 @@ def split_dataset(df) -> Tuple[TensorDataset, TensorDataset, TensorDataset, int,
         random_state=42,
         stratify=train_val_df["category"],
     )
+
+    # Add rare-category rows to training only
+    if not rare_df.empty:
+        train_df = pd.concat([train_df, rare_df], ignore_index=True)
 
     # Fit TF‑IDF vectoriser on the full training set
     vectorizer = fit_vectorizer(train_df["processed"])

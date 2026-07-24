@@ -93,7 +93,7 @@ def preprocess_text(text: str) -> str:
     return clean_text(text)
 
 
-def fit_vectorizer(texts: pd.Series, ngram_range: Tuple[int, int] = (1, 3), max_features: int = 10000, min_df: int = 2, max_df: float = 0.95) -> TfidfVectorizer:
+def fit_vectorizer(texts: pd.Series, ngram_range: Tuple[int, int] = (1, 3), max_features: int = 10000, min_df: int = 1, max_df: float = 0.95) -> TfidfVectorizer:
     """Fit a TF‑IDF vectorizer with production‑grade defaults.
 
     Parameters
