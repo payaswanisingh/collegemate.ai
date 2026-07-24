@@ -10,12 +10,18 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
 </head>
 <body>
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem('campusmate-theme') === 'light') {
+                    document.body.classList.add('light');
+                }
+            } catch (e) {}
+        })();
+    </script>
 
     <div class="bg-scene" aria-hidden="true">
-        <div class="blob blob-blue"></div>
-        <div class="blob blob-purple"></div>
-        <div class="blob blob-cyan"></div>
-        <div class="spotlight"></div>
+        <div class="top-fade"></div>
         <div class="grid-veil"></div>
     </div>
 
@@ -29,14 +35,17 @@
                 </span>
             </div>
             <div class="nav-links">
+                <button id="themeToggle" class="icon-btn" aria-label="Toggle dark mode">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                </button>
                 <a href="{{ url_for('auth.login') }}" class="btn btn-ghost">Log in</a>
                 <a href="{{ url_for('auth.register') }}" class="btn btn-primary">Get started</a>
             </div>
         </nav>
 
         <section class="hero">
-            <span class="hero-badge">✦ AI-powered student support</span>
-            <h1>Meet <span>CampusMate AI</span> — Your Smart Campus Assistant</h1>
+            <span class="hero-badge">Built for campus life</span>
+            <h1>Meet <span>CampusMate AI</span> — your smart campus assistant</h1>
             <p>Ask about fees, exams, hostels, placements, and more. Get instant, accurate answers — day or night — all in one place built for your college life.</p>
             <div class="hero-actions">
                 <a href="{{ url_for('auth.register') }}" class="btn btn-primary">Create your account</a>
@@ -49,7 +58,7 @@
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v10M9.5 9.5c0-1.4 1.1-2.5 2.5-2.5s2.5 1 2.5 2.2c0 2.8-5 1.8-5 4.6 0 1.2 1.1 2.2 2.5 2.2s2.5-1.1 2.5-2.5"></path></svg>
                     </div>
                     <h3>Instant answers</h3>
-                    <p>Fees, exams, attendance, and more — answered in seconds by an AI trained on your college's information.</p>
+                    <p>Fees, exams, attendance, and more — answered in seconds by an assistant trained on your college's information.</p>
                 </div>
                 <div class="glass-card feature-card">
                     <div class="feature-icon">
@@ -67,7 +76,10 @@
                 </div>
             </div>
         </section>
+
+        <footer class="footer">© 2026 CampusMate AI. Built for students, by students.</footer>
     </div>
 
+    <script src="{{ url_for('static', filename='theme.js') }}"></script>
 </body>
 </html>

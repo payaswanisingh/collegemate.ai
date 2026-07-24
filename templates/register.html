@@ -10,12 +10,18 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
 </head>
 <body>
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem('campusmate-theme') === 'light') {
+                    document.body.classList.add('light');
+                }
+            } catch (e) {}
+        })();
+    </script>
 
     <div class="bg-scene" aria-hidden="true">
-        <div class="blob blob-blue"></div>
-        <div class="blob blob-purple"></div>
-        <div class="blob blob-cyan"></div>
-        <div class="spotlight"></div>
+        <div class="top-fade"></div>
         <div class="grid-veil"></div>
     </div>
 
@@ -28,11 +34,17 @@
                     <span class="brand-subtitle">Your Smart Campus Assistant</span>
                 </span>
             </a>
+            <button id="themeToggle" class="icon-btn" aria-label="Toggle dark mode">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+            </button>
         </nav>
 
         <div class="auth-center">
             <div class="glass-card auth-card wide">
                 <div class="auth-card-header">
+                    <div class="step-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    </div>
                     <h1>Create your account</h1>
                     <p>Join CampusMate AI to get instant answers about your college.</p>
                 </div>
@@ -48,7 +60,8 @@
                 {% endwith %}
 
                 <form method="POST" action="{{ url_for('auth.register') }}" enctype="multipart/form-data" id="registerForm">
-                    <div class="form-grid">
+                    <div class="form-section-label">Account type</div>
+                    <div class="form-grid" style="margin-top:10px;">
                         <div class="field">
                             <label for="user_type">I am a</label>
                             <select id="user_type" name="user_type" required>
@@ -60,36 +73,52 @@
                         </div>
                     </div>
 
-                    <div class="form-grid two-col" style="margin-top:16px;">
+                    <div class="form-section-label" style="margin-top:22px;">Your details</div>
+                    <div class="form-grid two-col" style="margin-top:10px;">
                         <div class="field">
                             <label for="full_name">Full name</label>
-                            <input type="text" id="full_name" name="full_name" placeholder="Asha Verma"
-                                   value="{{ full_name or '' }}" required>
+                            <div class="field-control">
+                                <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                                <input type="text" id="full_name" name="full_name" placeholder="Asha Verma"
+                                       value="{{ full_name or '' }}" required>
+                            </div>
                         </div>
 
                         <div class="field">
                             <label for="email">Email</label>
-                            <input type="email" id="email" name="email" placeholder="you@example.com"
-                                   value="{{ email or '' }}" required>
+                            <div class="field-control">
+                                <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="m22 7-10 6L2 7"></path></svg>
+                                <input type="email" id="email" name="email" placeholder="you@example.com"
+                                       value="{{ email or '' }}" required>
+                            </div>
                         </div>
 
                         <div class="field">
                             <label for="password">Password</label>
-                            <input type="password" id="password" name="password" placeholder="Create a password" required>
+                            <div class="field-control">
+                                <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                                <input type="password" id="password" name="password" placeholder="Create a password" required>
+                            </div>
                             <div class="strength-meter"><div class="strength-meter-fill" id="strengthFill"></div></div>
                             <div class="strength-label" id="strengthLabel"></div>
                         </div>
 
                         <div class="field">
                             <label for="confirm_password">Confirm password</label>
-                            <input type="password" id="confirm_password" name="confirm_password" placeholder="Re-enter your password" required>
+                            <div class="field-control">
+                                <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                                <input type="password" id="confirm_password" name="confirm_password" placeholder="Re-enter your password" required>
+                            </div>
                             <div class="match-hint" id="matchHint"></div>
                         </div>
 
                         <div class="field">
                             <label for="phone_number">Phone number</label>
-                            <input type="tel" id="phone_number" name="phone_number" placeholder="+91 98765 43210"
-                                   value="{{ phone_number or '' }}" required>
+                            <div class="field-control">
+                                <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                                <input type="tel" id="phone_number" name="phone_number" placeholder="+91 98765 43210"
+                                       value="{{ phone_number or '' }}" required>
+                            </div>
                         </div>
 
                         <div class="field">
@@ -99,73 +128,79 @@
                     </div>
 
                     <!-- College student fields -->
-                    <div class="form-grid two-col type-fields" id="college-fields" style="margin-top:16px;">
-                        <div class="field">
-                            <label for="roll_number">Roll number</label>
-                            <input type="text" id="roll_number" name="roll_number" placeholder="e.g. CS21B045"
-                                   value="{{ roll_number or '' }}">
-                        </div>
+                    <div class="type-fields" id="college-fields" style="margin-top:22px;">
+                        <div class="form-section-label">College details</div>
+                        <div class="form-grid two-col" style="margin-top:10px;">
+                            <div class="field">
+                                <label for="roll_number">Roll number</label>
+                                <input type="text" id="roll_number" name="roll_number" placeholder="e.g. CS21B045"
+                                       value="{{ roll_number or '' }}">
+                            </div>
 
-                        <div class="field">
-                            <label for="college_name">College name</label>
-                            <input type="text" id="college_name" name="college_name" placeholder="Your college name"
-                                   value="{{ college_name or '' }}">
-                        </div>
+                            <div class="field">
+                                <label for="college_name">College name</label>
+                                <input type="text" id="college_name" name="college_name" placeholder="Your college name"
+                                       value="{{ college_name or '' }}">
+                            </div>
 
-                        <div class="field">
-                            <label for="department">Department</label>
-                            <select id="department" name="department">
-                                <option value="" disabled {% if not department %}selected{% endif %}>Select department</option>
-                                {% for dept in ['Computer Science', 'Information Technology', 'Electronics & Communication', 'Electrical Engineering', 'Mechanical Engineering', 'Civil Engineering', 'Business Administration', 'Commerce'] %}
-                                <option value="{{ dept }}" {% if department == dept %}selected{% endif %}>{{ dept }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
+                            <div class="field">
+                                <label for="department">Department</label>
+                                <select id="department" name="department">
+                                    <option value="" disabled {% if not department %}selected{% endif %}>Select department</option>
+                                    {% for dept in ['Computer Science', 'Information Technology', 'Electronics & Communication', 'Electrical Engineering', 'Mechanical Engineering', 'Civil Engineering', 'Business Administration', 'Commerce'] %}
+                                    <option value="{{ dept }}" {% if department == dept %}selected{% endif %}>{{ dept }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
 
-                        <div class="field">
-                            <label for="semester">Semester</label>
-                            <select id="semester" name="semester">
-                                <option value="" disabled {% if not semester %}selected{% endif %}>Select semester</option>
-                                {% for sem in range(1, 9) %}
-                                <option value="{{ sem }}" {% if semester == sem|string %}selected{% endif %}>Semester {{ sem }}</option>
-                                {% endfor %}
-                            </select>
+                            <div class="field">
+                                <label for="semester">Semester</label>
+                                <select id="semester" name="semester">
+                                    <option value="" disabled {% if not semester %}selected{% endif %}>Select semester</option>
+                                    {% for sem in range(1, 9) %}
+                                    <option value="{{ sem }}" {% if semester == sem|string %}selected{% endif %}>Semester {{ sem }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
                         </div>
                     </div>
 
                     <!-- School student fields -->
-                    <div class="form-grid two-col type-fields" id="school-fields" style="margin-top:16px; display:none;">
-                        <div class="field">
-                            <label for="school_name">School name</label>
-                            <input type="text" id="school_name" name="school_name" placeholder="Your school name"
-                                   value="{{ school_name or '' }}">
-                        </div>
+                    <div class="type-fields" id="school-fields" style="margin-top:22px; display:none;">
+                        <div class="form-section-label">School details</div>
+                        <div class="form-grid two-col" style="margin-top:10px;">
+                            <div class="field">
+                                <label for="school_name">School name</label>
+                                <input type="text" id="school_name" name="school_name" placeholder="Your school name"
+                                       value="{{ school_name or '' }}">
+                            </div>
 
-                        <div class="field">
-                            <label for="class_level">Class</label>
-                            <select id="class_level" name="class_level">
-                                <option value="" disabled {% if not class_level %}selected{% endif %}>Select class</option>
-                                {% for cls in range(6, 13) %}
-                                <option value="{{ cls }}" {% if class_level == cls|string %}selected{% endif %}>Class {{ cls }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
+                            <div class="field">
+                                <label for="class_level">Class</label>
+                                <select id="class_level" name="class_level">
+                                    <option value="" disabled {% if not class_level %}selected{% endif %}>Select class</option>
+                                    {% for cls in range(6, 13) %}
+                                    <option value="{{ cls }}" {% if class_level == cls|string %}selected{% endif %}>Class {{ cls }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
 
-                        <div class="field" id="stream-field" style="display:none;">
-                            <label for="stream">Stream</label>
-                            <select id="stream" name="stream">
-                                <option value="" disabled {% if not stream %}selected{% endif %}>Select stream</option>
-                                {% for s in ['Science', 'Commerce', 'Arts'] %}
-                                <option value="{{ s }}" {% if stream == s %}selected{% endif %}>{{ s }}</option>
-                                {% endfor %}
-                            </select>
+                            <div class="field" id="stream-field" style="display:none;">
+                                <label for="stream">Stream</label>
+                                <select id="stream" name="stream">
+                                    <option value="" disabled {% if not stream %}selected{% endif %}>Select stream</option>
+                                    {% for s in ['Science', 'Commerce', 'Arts'] %}
+                                    <option value="{{ s }}" {% if stream == s %}selected{% endif %}>{{ s }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
                         </div>
                     </div>
 
                     <!-- Parent: no extra fields beyond the common ones above -->
                     <div class="type-fields" id="parent-fields" style="display:none;"></div>
 
-                    <label class="checkbox-row" style="margin-top: 18px;">
+                    <label class="checkbox-row" style="margin-top: 20px;">
                         <input type="checkbox" name="terms_accepted" required>
                         <span>I agree to the <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.</span>
                     </label>
@@ -182,6 +217,7 @@
         </div>
     </div>
 
+    <script src="{{ url_for('static', filename='theme.js') }}"></script>
     <script src="{{ url_for('static', filename='auth.js') }}"></script>
 </body>
 </html>

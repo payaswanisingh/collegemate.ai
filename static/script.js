@@ -1,36 +1,88 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // ===== DOM Elements =====
     const questionInput = document.getElementById('questionInput');
     const sendBtn = document.getElementById('sendBtn');
     const chatList = document.getElementById('chatList');
-    const quickPrompts = document.getElementById('quickPrompts');
+    const welcomeScreen = document.getElementById('welcomeScreen');
+    const welcomePrompts = document.getElementById('welcomePrompts');
     const sidebarToggle = document.getElementById('sidebarToggle');
     const sidebarPanel = document.getElementById('sidebarPanel');
     const sidebarScrim = document.getElementById('sidebarScrim');
     const newChatBtn = document.getElementById('newChatBtn');
     const themeToggle = document.getElementById('themeToggle');
     const clock = document.getElementById('clock');
+    const currentDate = document.getElementById('currentDate');
+    const settingsBtn = document.getElementById('settingsBtn');
+    const closeSettings = document.getElementById('closeSettings');
+    const settingsPanel = document.getElementById('settingsPanel');
+    const settingsScrim = settingsPanel.querySelector('.settings-scrim');
+    const sidebarCategories = document.getElementById('sidebarCategories');
+    const clearChatBtn = document.getElementById('clearChatBtn');
+    const themeControl = document.getElementById('themeControl');
+    const accentControl = document.getElementById('accentControl');
+    const fontSizeControl = document.getElementById('fontSizeControl');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const toast = document.getElementById('toast');
 
-    const quickTopics = [
-        'Fee Structure',
-        'Exam Dates',
-        'Placement Cell',
-        'Hostel Facilities',
-        'Library Timings',
-        'Course Registration',
-        'Scholarships',
-        'Student Services',
+    // ===== Icon library (Lucide-style inline SVGs, no emojis) =====
+    const icons = {
+        admissions: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>',
+        fees: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>',
+        scholarships: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.4L17 22l-5-3-5 3 1.5-8.6"></path></svg>',
+        hostel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>',
+        library: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>',
+        placements: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>',
+        attendance: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 12l2 2 4-4"></path></svg>',
+        examinations: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="12" y2="17"></line></svg>',
+        campusLife: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>',
+    };
+
+    // ===== Data =====
+    const welcomeTopics = [
+        { icon: icons.admissions, title: 'Admission Process', query: 'Admission Process' },
+        { icon: icons.fees, title: 'Fee Structure', query: 'Fee Structure' },
+        { icon: icons.scholarships, title: 'Scholarships', query: 'Scholarships' },
+        { icon: icons.hostel, title: 'Hostel', query: 'Hostel Facilities' },
+        { icon: icons.library, title: 'Library', query: 'Library Timings' },
+        { icon: icons.placements, title: 'Placements', query: 'Placement Cell' },
+        { icon: icons.attendance, title: 'Attendance', query: 'Attendance Policy' },
+        { icon: icons.examinations, title: 'Examinations', query: 'Exam Dates' },
     ];
 
     const categories = [
-        'Fees',
-        'Exams',
-        'Hostel',
-        'Placements',
-        'Library',
-        'Admissions',
-        'Campus Life',
+        { icon: icons.fees, name: 'Fees', query: 'Fee Structure' },
+        { icon: icons.examinations, name: 'Examinations', query: 'Exam Dates' },
+        { icon: icons.admissions, name: 'Admissions', query: 'Admission Process' },
+        { icon: icons.hostel, name: 'Hostel', query: 'Hostel Facilities' },
+        { icon: icons.placements, name: 'Placements', query: 'Placement Cell' },
+        { icon: icons.library, name: 'Library', query: 'Library Timings' },
+        { icon: icons.campusLife, name: 'Campus Life', query: 'Student Services' },
     ];
 
+    // ===== State =====
+    let messageCount = 0;
+
+    // ===== Storage Keys =====
+    const THEME_KEY = 'campusmate-theme';
+    const ACCENT_KEY = 'campusmate-accent';
+    const FONT_SIZE_KEY = 'campusmate-font-size';
+
+    // ===== Initialize =====
+    function init() {
+        applyStoredTheme();
+        applyStoredAccent();
+        applyStoredFontSize();
+        updateClock();
+        updateDate();
+        renderWelcomePrompts();
+        renderSidebarCategories();
+        setupEventListeners();
+        syncSettingsUI();
+        setInterval(updateClock, 60 * 1000);
+        setInterval(updateDate, 1000);
+    }
+
+    // ===== Clock & Date =====
     function updateClock() {
         if (!clock) return;
         const now = new Date();
@@ -39,6 +91,120 @@ document.addEventListener('DOMContentLoaded', () => {
         clock.textContent = `${hours}:${minutes}`;
     }
 
+    function updateDate() {
+        if (!currentDate) return;
+        const now = new Date();
+        const options = { weekday: 'short', month: 'short', day: 'numeric' };
+        currentDate.textContent = now.toLocaleDateString('en-US', options);
+    }
+
+    // ===== Theme Management =====
+    function applyStoredTheme() {
+        try {
+            const saved = localStorage.getItem(THEME_KEY);
+            if (saved === 'light') {
+                document.body.classList.add('light');
+            } else {
+                document.body.classList.remove('light');
+            }
+        } catch (e) {
+            // localStorage unavailable
+        }
+    }
+
+    function setTheme(theme) {
+        if (theme === 'light') {
+            document.body.classList.add('light');
+        } else {
+            document.body.classList.remove('light');
+        }
+        try {
+            localStorage.setItem(THEME_KEY, theme);
+        } catch (e) {
+            // ignore write failures
+        }
+        syncSettingsUI();
+    }
+
+    function toggleTheme() {
+        const isLight = document.body.classList.contains('light');
+        setTheme(isLight ? 'dark' : 'light');
+    }
+
+    // ===== Accent Color Management =====
+    function applyStoredAccent() {
+        try {
+            const saved = localStorage.getItem(ACCENT_KEY) || 'blue';
+            document.documentElement.setAttribute('data-accent', saved);
+        } catch (e) {
+            document.documentElement.setAttribute('data-accent', 'blue');
+        }
+    }
+
+    function setAccent(accent) {
+        document.documentElement.setAttribute('data-accent', accent);
+        try {
+            localStorage.setItem(ACCENT_KEY, accent);
+        } catch (e) {
+            // ignore write failures
+        }
+        syncSettingsUI();
+    }
+
+    // ===== Font Size Management =====
+    function applyStoredFontSize() {
+        try {
+            const saved = localStorage.getItem(FONT_SIZE_KEY) || 'medium';
+            document.documentElement.setAttribute('data-font-size', saved);
+        } catch (e) {
+            document.documentElement.setAttribute('data-font-size', 'medium');
+        }
+    }
+
+    function setFontSize(size) {
+        document.documentElement.setAttribute('data-font-size', size);
+        try {
+            localStorage.setItem(FONT_SIZE_KEY, size);
+        } catch (e) {
+            // ignore write failures
+        }
+        syncSettingsUI();
+    }
+
+    // ===== Sync Settings UI state =====
+    function syncSettingsUI() {
+        const isLight = document.body.classList.contains('light');
+        const accent = document.documentElement.getAttribute('data-accent') || 'blue';
+        const fontSize = document.documentElement.getAttribute('data-font-size') || 'medium';
+
+        if (themeControl) {
+            themeControl.querySelectorAll('.segmented-option').forEach((btn) => {
+                btn.classList.toggle('active', btn.getAttribute('data-theme') === (isLight ? 'light' : 'dark'));
+            });
+        }
+
+        if (accentControl) {
+            accentControl.querySelectorAll('.accent-swatch').forEach((btn) => {
+                btn.classList.toggle('active', btn.getAttribute('data-accent') === accent);
+            });
+        }
+
+        if (fontSizeControl) {
+            fontSizeControl.querySelectorAll('.segmented-option').forEach((btn) => {
+                btn.classList.toggle('active', btn.getAttribute('data-size') === fontSize);
+            });
+        }
+    }
+
+    // ===== Toast =====
+    function showToast(message) {
+        if (!toast) return;
+        toast.textContent = message;
+        toast.classList.add('visible');
+        setTimeout(() => toast.classList.remove('visible'), 2200);
+    }
+
+    // ===== Utility Functions =====
     function escapeHtml(value) {
         return String(value)
             .replace(/&/g, '&amp;')
@@ -48,6 +214,11 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/'/g, '&#39;');
     }
 
+    function scrollToBottom() {
+        chatList.scrollTop = chatList.scrollHeight;
+    }
+
+    // ===== Message Rendering =====
     function createMessageRow(type, message, meta) {
         const row = document.createElement('div');
         row.className = `message-row ${type}`;
@@ -102,10 +273,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return row;
     }
 
-    function scrollToBottom() {
-        chatList.scrollTop = chatList.scrollHeight;
-    }
-
     function addMessage(type, text, meta) {
         const row = createMessageRow(type, text, meta);
         chatList.appendChild(row);
@@ -119,60 +286,56 @@ document.addEventListener('DOMContentLoaded', () => {
         return typingRow;
     }
 
+    // ===== Welcome Screen =====
+    function renderWelcomePrompts() {
+        welcomePrompts.innerHTML = '';
+        welcomeTopics.forEach((topic) => {
+            const card = document.createElement('button');
+            card.type = 'button';
+            card.className = 'welcome-card';
+            card.innerHTML = `
+                <div class="welcome-card-icon">${topic.icon}</div>
+                <div class="welcome-card-title">${topic.title}</div>
+            `;
+            card.addEventListener('click', () => {
+                questionInput.value = topic.query;
+                sendQuestion();
+            });
+            welcomePrompts.appendChild(card);
+        });
+    }
+
+    function showWelcomeScreen() {
+        if (welcomeScreen) {
+            welcomeScreen.classList.remove('hidden');
+        }
+    }
+
+    function hideWelcomeScreen() {
+        if (welcomeScreen) {
+            welcomeScreen.classList.add('hidden');
+        }
+    }
+
+    // ===== Chat Management =====
     function clearChat() {
         chatList.innerHTML = '';
-        addMessage('assistant', 'Hi there! Ask me anything about campus life, fees, exams, or admissions.', 'Ready to help');
-    }
-
-    function renderQuickPrompts() {
-        quickPrompts.innerHTML = '';
-        quickTopics.forEach((topic) => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'action-chip';
-            btn.textContent = topic;
-            btn.addEventListener('click', () => {
-                questionInput.value = topic;
-                questionInput.focus();
-            });
-            quickPrompts.appendChild(btn);
-        });
-    }
-
-    function renderSidebarCategories() {
-        const container = document.getElementById('sidebarCategories');
-        if (!container) return;
-        container.innerHTML = '';
-        categories.forEach((category) => {
-            const chip = document.createElement('button');
-            chip.type = 'button';
-            chip.className = 'action-chip';
-            chip.textContent = category;
-            chip.addEventListener('click', () => {
-                questionInput.value = category;
-                questionInput.focus();
-            });
-            container.appendChild(chip);
-        });
-    }
-
-    function toggleSidebar(open) {
-        if (!sidebarPanel || !sidebarScrim) return;
-        sidebarPanel.classList.toggle('visible', open);
-        sidebarScrim.classList.toggle('visible', open);
-        sidebarToggle.setAttribute('aria-expanded', String(open));
-    }
-
-    function toggleTheme() {
-        document.body.classList.toggle('light');
+        messageCount = 0;
+        showWelcomeScreen();
     }
 
     async function sendQuestion() {
         const question = questionInput.value.trim();
         if (!question) return;
 
+        if (messageCount === 0) {
+            hideWelcomeScreen();
+        }
+
+        messageCount++;
         addMessage('user', question, new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
         questionInput.value = '';
+        questionInput.style.height = 'auto';
         questionInput.focus();
 
         const typingRow = addTyping();
@@ -189,7 +352,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const answer = data.answer || data.error || 'Sorry, I could not answer that right now.';
             const meta = data.intent ? `Intent: ${data.intent} • ${data.confidence || 'N/A'}` : 'CampusMate AI';
 
-            chatList.removeChild(typingRow);
+            if (typingRow.parentNode) {
+                chatList.removeChild(typingRow);
+            }
             addMessage('assistant', answer, meta);
         } catch (error) {
             if (typingRow.parentNode) {
@@ -201,33 +366,146 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    sendBtn.addEventListener('click', sendQuestion);
-    questionInput.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-            sendQuestion();
+    // ===== Sidebar Rendering =====
+    function renderSidebarCategories() {
+        if (!sidebarCategories) return;
+        sidebarCategories.innerHTML = '';
+        categories.forEach((category) => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'nav-item';
+            item.innerHTML = `${category.icon}<span>${category.name}</span>`;
+            item.addEventListener('click', () => {
+                questionInput.value = category.query;
+                questionInput.focus();
+                sendQuestion();
+                toggleSidebar(false);
+            });
+            sidebarCategories.appendChild(item);
+        });
+    }
+
+    // ===== Sidebar Toggle (mobile) =====
+    function toggleSidebar(open) {
+        if (!sidebarPanel || !sidebarScrim) return;
+        sidebarPanel.classList.toggle('visible', open);
+        sidebarScrim.classList.toggle('visible', open);
+        sidebarToggle.setAttribute('aria-expanded', String(open));
+    }
+
+    // ===== Settings Drawer =====
+    function openSettings() {
+        settingsPanel.classList.add('visible');
+        document.body.style.overflow = 'hidden';
+        syncSettingsUI();
+    }
+
+    function closeSettingsPanel() {
+        settingsPanel.classList.remove('visible');
+        document.body.style.overflow = '';
+    }
+
+    // ===== Auto-resize textarea =====
+    function autoResize() {
+        questionInput.style.height = 'auto';
+        questionInput.style.height = Math.min(questionInput.scrollHeight, 160) + 'px';
+    }
+
+    // ===== Event Listeners =====
+    function setupEventListeners() {
+        // Send message
+        sendBtn.addEventListener('click', sendQuestion);
+        questionInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendQuestion();
+            }
+        });
+        questionInput.addEventListener('input', autoResize);
+
+        // Theme toggle (topbar icon)
+        if (themeToggle) {
+            themeToggle.addEventListener('click', toggleTheme);
         }
-    });
 
-    if (newChatBtn) {
-        newChatBtn.addEventListener('click', clearChat);
+        // New chat
+        if (newChatBtn) {
+            newChatBtn.addEventListener('click', clearChat);
+        }
+
+        // Sidebar toggle
+        if (sidebarToggle) {
+            sidebarToggle.addEventListener('click', () => toggleSidebar(true));
+        }
+
+        if (sidebarScrim) {
+            sidebarScrim.addEventListener('click', () => toggleSidebar(false));
+        }
+
+        // Settings drawer
+        if (settingsBtn) {
+            settingsBtn.addEventListener('click', openSettings);
+        }
+
+        if (closeSettings) {
+            closeSettings.addEventListener('click', closeSettingsPanel);
+        }
+
+        if (settingsScrim) {
+            settingsScrim.addEventListener('click', closeSettingsPanel);
+        }
+
+        // Theme segmented control
+        if (themeControl) {
+            themeControl.querySelectorAll('.segmented-option').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    setTheme(btn.getAttribute('data-theme'));
+                });
+            });
+        }
+
+        // Accent color swatches
+        if (accentControl) {
+            accentControl.querySelectorAll('.accent-swatch').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    setAccent(btn.getAttribute('data-accent'));
+                });
+            });
+        }
+
+        // Font size segmented control
+        if (fontSizeControl) {
+            fontSizeControl.querySelectorAll('.segmented-option').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    setFontSize(btn.getAttribute('data-size'));
+                });
+            });
+        }
+
+        // Clear chat from settings
+        if (clearChatBtn) {
+            clearChatBtn.addEventListener('click', () => {
+                clearChat();
+                closeSettingsPanel();
+                showToast('Conversation cleared');
+            });
+        }
+
+        // Logout (visual — does not alter backend/auth)
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', () => {
+                showToast('Logout requires backend session handling');
+            });
+        }
+
+        // Close settings with Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && settingsPanel.classList.contains('visible')) {
+                closeSettingsPanel();
+            }
+        });
     }
 
-    if (sidebarToggle) {
-        sidebarToggle.addEventListener('click', () => toggleSidebar(true));
-    }
-
-    if (sidebarScrim) {
-        sidebarScrim.addEventListener('click', () => toggleSidebar(false));
-    }
-
-    if (themeToggle) {
-        themeToggle.addEventListener('click', toggleTheme);
-    }
-
-    updateClock();
-    setInterval(updateClock, 60 * 1000);
-    renderQuickPrompts();
-    renderSidebarCategories();
-    clearChat();
+    // ===== Initialize App =====
+    init();
 });
