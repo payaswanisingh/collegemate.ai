@@ -67,6 +67,20 @@ document.addEventListener('DOMContentLoaded', () => {
     let messageCount = 0;
     let currentConversationId = null;
     let selectedFiles = [];
+    let allConversations = [];
+    const currentUserName = (document.body.dataset.userName || '').trim();
+
+    // ===== Client-side message id (dedupe) =====
+    // Generated once per send and resubmitted with the request so the
+    // backend can recognize (and ignore) an accidental duplicate send —
+    // e.g. a double-click on Send, or a fetch retried after a flaky
+    // connection — instead of saving the same question/answer twice.
+    function generateClientId() {
+        if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+            return window.crypto.randomUUID();
+        }
+        return `cid-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
 
     // ===== Storage Keys =====
     const THEME_KEY = 'campusmate-theme';
@@ -421,6 +435,33 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // ===== Personalized Greeting =====
+    function getGreetingText() {
+        if (currentUserName) {
+            return `👋 Hi ${currentUserName}! Welcome back. I'm CampusMate AI. How can I help you today?`;
+        }
+        return "👋 Welcome! I'm CampusMate AI. How can I help you today?";
+    }
+
+    // Shows a ~1s typing animation (reusing the existing typing indicator
+    // and chat bubble UI) and then the greeting, without waiting for the
+    // user to send anything first. Resolves once the greeting bubble is
+    // in the DOM.
+    function showGreeting() {
+        return new Promise((resolve) => {
+            hideWelcomeScreen();
+            const typingRow = addTyping();
+            setTimeout(() => {
+                if (typingRow.parentNode) {
+                    chatList.removeChild(typingRow);
+                }
+                addMessage('assistant', getGreetingText(), 'CampusMate AI');
+                messageCount = Math.max(messageCount, 1);
+                resolve();
+            }, 1000);
+        });
+    }
+
     // ===== Chat Management =====
     function clearChat() {
         chatList.innerHTML = '';
@@ -429,15 +470,27 @@ document.addEventListener('DOMContentLoaded', () => {
         showWelcomeScreen();
     }
 
-    async function startNewChat() {
+    // Clears the transcript and starts a brand-new (or reused-empty)
+    // conversation, then shows the personalized greeting exactly once —
+    // shared by first page load (when there's no history yet), "New Chat",
+    // and "Clear conversation".
+    async function beginFreshConversation() {
         try {
             const response = await fetch('/chat/new', { method: 'POST' });
             const data = await response.json();
-            const newConversationId = data.conversation_id || null;
-            currentConversationId = newConversationId;
-            chatList.innerHTML = '';
-            messageCount = 0;
-            showWelcomeScreen();
+            currentConversationId = data.conversation_id || null;
+        } catch (error) {
+            currentConversationId = null;
+        }
+        chatList.innerHTML = '';
+        messageCount = 0;
+        await showGreeting();
+    }
+
+    async function startNewChat() {
+        try {
+            await beginFreshConversation();
+            await refreshSidebarConversations();
             showToast('Started a new chat');
         } catch (error) {
             clearChat();
@@ -446,22 +499,64 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderSidebarConversations(conversations) {
+        allConversations = conversations;
         if (!sidebarConversations) return;
         sidebarConversations.innerHTML = '';
 
+        if (!conversations.length) {
+            const empty = document.createElement('div');
+            empty.className = 'nav-empty';
+            empty.textContent = 'No conversations yet';
+            sidebarConversations.appendChild(empty);
+            return;
+        }
+
         conversations.forEach((conversation) => {
-            const item = document.createElement('button');
-            item.type = 'button';
+            const item = document.createElement('div');
             item.className = 'nav-item conversation-item';
-            item.innerHTML = `
+            item.style.display = 'flex';
+            item.style.alignItems = 'center';
+            item.style.justifyContent = 'space-between';
+            item.style.gap = '6px';
+            if (conversation.conversation_id === currentConversationId) {
+                item.classList.add('active');
+            }
+
+            const openBtn = document.createElement('button');
+            openBtn.type = 'button';
+            openBtn.className = 'conversation-open';
+            openBtn.style.cssText = 'flex:1; min-width:0; display:flex; flex-direction:column; align-items:flex-start; background:none; border:none; cursor:pointer; color:inherit; text-align:left; padding:0;';
+            openBtn.innerHTML = `
                 <span class="conversation-title">${escapeHtml(conversation.title || 'New chat')}</span>
                 <span class="conversation-meta">${conversation.message_count || 0} messages</span>
             `;
-            item.addEventListener('click', () => {
+            openBtn.addEventListener('click', async () => {
                 currentConversationId = conversation.conversation_id;
-                renderConversationMessages(conversation);
+                if (conversation.messages && conversation.messages.length) {
+                    renderConversationMessages(conversation);
+                } else {
+                    chatList.innerHTML = '';
+                    messageCount = 0;
+                    await showGreeting();
+                }
+                renderSidebarConversations(allConversations);
                 toggleSidebar(false);
             });
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.className = 'conversation-delete';
+            deleteBtn.setAttribute('aria-label', 'Delete conversation');
+            deleteBtn.title = 'Delete conversation';
+            deleteBtn.style.cssText = 'flex:0 0 auto; background:none; border:none; cursor:pointer; color:inherit; opacity:0.6; padding:4px;';
+            deleteBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path></svg>';
+            deleteBtn.addEventListener('click', async (event) => {
+                event.stopPropagation();
+                await deleteConversation(conversation.conversation_id);
+            });
+
+            item.appendChild(openBtn);
+            item.appendChild(deleteBtn);
             sidebarConversations.appendChild(item);
         });
     }
@@ -469,31 +564,92 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderConversationMessages(conversation) {
         chatList.innerHTML = '';
         messageCount = 0;
+        hideWelcomeScreen();
         const messages = conversation.messages || [];
         messages.forEach((item) => {
             addMessage('user', item.question, new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
             addMessage('assistant', item.answer, item.source ? `${item.source} • ${new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'CampusMate AI');
             messageCount += 2;
         });
-        if (messageCount > 0) {
-            hideWelcomeScreen();
-        } else {
+        if (messageCount === 0) {
             showWelcomeScreen();
         }
     }
 
+    async function fetchConversations() {
+        const response = await fetch('/chat/history');
+        if (!response.ok) throw new Error('Failed to load chat history');
+        const data = await response.json();
+        return data.conversations || [];
+    }
+
+    // Refreshes just the sidebar list (title/message counts/active state)
+    // without touching whatever is currently open in the main chat panel.
+    async function refreshSidebarConversations() {
+        try {
+            const conversations = await fetchConversations();
+            renderSidebarConversations(conversations);
+        } catch (error) {
+            // Non-fatal — the open conversation is unaffected either way.
+        }
+    }
+
+    async function deleteConversation(conversationId) {
+        try {
+            const response = await fetch(`/chat/history/${conversationId}`, { method: 'DELETE' });
+            if (!response.ok) throw new Error('Delete failed');
+
+            if (conversationId === currentConversationId) {
+                const conversations = await fetchConversations();
+                if (conversations.length) {
+                    currentConversationId = conversations[0].conversation_id;
+                    if (conversations[0].messages && conversations[0].messages.length) {
+                        renderConversationMessages(conversations[0]);
+                    } else {
+                        chatList.innerHTML = '';
+                        messageCount = 0;
+                        await showGreeting();
+                    }
+                    renderSidebarConversations(conversations);
+                } else {
+                    await beginFreshConversation();
+                    await refreshSidebarConversations();
+                }
+            } else {
+                await refreshSidebarConversations();
+            }
+            showToast('Conversation deleted');
+        } catch (error) {
+            showToast('Unable to delete conversation');
+        }
+    }
+
+    // Loads every saved conversation for the logged-in user into the
+    // sidebar, then opens the most recently active one — or, if this user
+    // has no history yet (or their most recent thread is still empty),
+    // starts a fresh conversation and shows the personalized greeting
+    // right away instead of waiting for a first message.
     async function loadChatHistory() {
         try {
-            const response = await fetch('/chat/history');
-            const data = await response.json();
-            const conversations = data.conversations || [];
-            renderSidebarConversations(conversations);
+            const conversations = await fetchConversations();
+
             if (!conversations.length) {
-                clearChat();
+                await beginFreshConversation();
+                await refreshSidebarConversations();
                 return;
             }
-            currentConversationId = conversations[0].conversation_id;
-            renderConversationMessages(conversations[0]);
+
+            const latest = conversations[0];
+            currentConversationId = latest.conversation_id;
+            renderSidebarConversations(conversations);
+
+            if (latest.messages && latest.messages.length) {
+                renderConversationMessages(latest);
+            } else {
+                chatList.innerHTML = '';
+                messageCount = 0;
+                await showGreeting();
+            }
         } catch (error) {
             clearChat();
         }
@@ -515,10 +671,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const typingRow = addTyping();
         sendBtn.disabled = true;
+        const clientId = generateClientId();
 
         try {
             const payload = new FormData();
             payload.append('question', question);
+            payload.append('client_id', clientId);
             if (currentConversationId) {
                 payload.append('conversation_id', currentConversationId);
             }
@@ -538,6 +696,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 chatList.removeChild(typingRow);
             }
             addMessage('assistant', answer, meta);
+            await refreshSidebarConversations();
         } catch (error) {
             if (typingRow.parentNode) {
                 chatList.removeChild(typingRow);
@@ -685,12 +844,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (clearChatBtn) {
             clearChatBtn.addEventListener('click', async () => {
                 try {
-                    await fetch('/chat/history', { method: 'DELETE' });
-                    clearChat();
+                    const response = await fetch('/chat/history', { method: 'DELETE' });
+                    if (!response.ok) throw new Error('Clear failed');
+                    await beginFreshConversation();
+                    await refreshSidebarConversations();
                     closeSettingsPanel();
-                    showToast('Conversation cleared');
+                    showToast('All conversations cleared');
                 } catch (error) {
-                    showToast('Unable to clear conversation');
+                    showToast('Unable to clear conversation history');
                 }
             });
         }

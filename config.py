@@ -87,6 +87,17 @@ class Config:
     APP_NAME: str = os.getenv("APP_NAME", "CampusMate AI")
     APP_TAGLINE: str = os.getenv("APP_TAGLINE", "Your Smart Campus Assistant")
 
+    # ------------------------------------------------------------------
+    # Note: Gemini configuration (GEMINI_API_KEY, GEMINI_MODEL)
+    # ------------------------------------------------------------------
+    # Intentionally NOT read here. `Chatbot` (chatbot.py) is instantiated
+    # directly with no reference to the Flask app or this Config class, so
+    # it loads GEMINI_API_KEY / GEMINI_MODEL itself via python-dotenv at
+    # startup. This is by design, not an oversight — if Gemini ever needs
+    # to be reachable from Config for some other reason (e.g. a health
+    # check route), read the same two env vars here rather than moving
+    # Chatbot's initialization to depend on this class.
+
 
 class DevelopmentConfig(Config):
     """Local development settings."""

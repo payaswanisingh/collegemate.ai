@@ -8,6 +8,7 @@ TF-IDF vectorizer and label encoder, and provides prediction.
 import io
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -28,6 +29,28 @@ except ImportError:
             "Gemini features will be unavailable until it is installed/fixed.",
             _genai_import_error,
         )
+
+# google-api-core ships as a dependency of google-generativeai, so this
+# should always be importable whenever `genai` itself is — but it's guarded
+# anyway so a partially-broken install degrades to string-matching instead
+# of crashing at import time (see _classify_gemini_exception below).
+try:
+    from google.api_core.exceptions import (
+        GoogleAPICallError,
+        InvalidArgument,
+        NotFound,
+        PermissionDenied,
+        ResourceExhausted,
+        Unauthenticated,
+    )
+except ImportError:
+    GoogleAPICallError = None
+    InvalidArgument = None
+    NotFound = None
+    PermissionDenied = None
+    ResourceExhausted = None
+    Unauthenticated = None
+
 from pypdf import PdfReader
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -47,7 +70,34 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+# gemini-2.0-flash was Google's long-standing free-tier default, but it was
+# deprecated and fully shut down on June 1, 2026 (see
+# https://ai.google.dev/gemini-api/docs/pricing#gemini-2.0-flash). Calling a
+# shut-down model doesn't behave like ordinary throttling: Google reports it
+# as a 429 RESOURCE_EXHAUSTED with a hard "limit: 0" free-tier quota, which
+# looks identical to a real rate limit in the logs but can never succeed no
+# matter how long you wait or how few requests you send. gemini-2.5-flash is
+# the current GA, free-tier-eligible replacement recommended by Google for
+# exactly this migration.
+FALLBACK_GEMINI_MODEL = "gemini-2.5-flash"
+DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", FALLBACK_GEMINI_MODEL)
+
+# Models that no longer serve requests at all (shut down), or that Google
+# has otherwise fully retired. If GEMINI_MODEL still points at one of these
+# — e.g. an old .env that predates the June 2026 shutdown — _init_gemini
+# swaps in FALLBACK_GEMINI_MODEL automatically instead of quietly failing
+# on every single request with a misleading "quota exceeded" message.
+# Update this table as Google retires further models; see
+# https://ai.google.dev/gemini-api/docs/deprecations for the current list.
+DEPRECATED_GEMINI_MODELS = {
+    "gemini-2.0-flash": "shut down by Google on June 1, 2026",
+    "gemini-2.0-flash-lite": "shut down by Google on June 1, 2026",
+    "gemini-1.5-flash": "retired",
+    "gemini-1.5-flash-8b": "retired",
+    "gemini-1.5-pro": "retired",
+    "gemini-pro": "retired (legacy alias)",
+}
+
 GEMINI_SYSTEM_PROMPT = (
     "You are CampusMate AI, a warm, knowledgeable university assistant who talks like a "
     "helpful, articulate human — the same conversational quality students expect from "
@@ -83,6 +133,65 @@ CONFIDENCE_THRESHOLD = 15.0
 SIMILARITY_THRESHOLD = 0.12
 CONTEXT_RELEVANCE_THRESHOLD = 0.12
 TOP_K_CONTEXT_ROWS = 4
+
+# Pulls a human-readable retry hint out of google-api-core's exception
+# message, e.g. "...Please retry in 51.203696311s." -> 51.2. Best-effort:
+# if the SDK ever changes this wording, callers just get retry_after=None
+# and fall back to a generic "try again shortly" message instead of a
+# specific countdown.
+_RETRY_DELAY_RE = re.compile(r"retry in\s+([\d.]+)\s*s", re.IGNORECASE)
+
+
+def _classify_gemini_exception(exc: Exception) -> Dict[str, Any]:
+    """Turn a raw Gemini SDK exception into a small, stable status the rest
+    of the app can branch and report on, instead of a raw stack-trace
+    string that's identical for "quota exceeded" and "your API key is
+    wrong" and "the model name doesn't exist".
+
+    Returns a dict with:
+      - status: one of "quota_exceeded", "invalid_api_key", "invalid_model",
+        "invalid_request", "content_blocked", "unavailable"
+      - message: a short, student-safe description of what happened
+      - retry_after: seconds until retry might succeed, if Gemini reported
+        one (only meaningful for "quota_exceeded"); otherwise None
+    """
+    retry_match = _RETRY_DELAY_RE.search(str(exc))
+    retry_after = float(retry_match.group(1)) if retry_match else None
+
+    if ResourceExhausted is not None and isinstance(exc, ResourceExhausted):
+        return {"status": "quota_exceeded", "message": "Gemini quota exceeded", "retry_after": retry_after}
+    if Unauthenticated is not None and isinstance(exc, Unauthenticated):
+        return {"status": "invalid_api_key", "message": "Gemini API key was rejected", "retry_after": None}
+    if PermissionDenied is not None and isinstance(exc, PermissionDenied):
+        return {
+            "status": "invalid_api_key",
+            "message": "Gemini API key does not have permission for this model",
+            "retry_after": None,
+        }
+    if NotFound is not None and isinstance(exc, NotFound):
+        return {"status": "invalid_model", "message": "Configured Gemini model was not found", "retry_after": None}
+    if InvalidArgument is not None and isinstance(exc, InvalidArgument):
+        return {"status": "invalid_request", "message": "Gemini rejected the request", "retry_after": None}
+
+    # Fallback for when google.api_core wasn't importable, or the SDK ever
+    # raises something outside its own typed exception hierarchy (e.g. a
+    # raw grpc/network error) — string-match the same signals a human would
+    # look for in the log line.
+    text = str(exc)
+    if "429" in text or "RESOURCE_EXHAUSTED" in text:
+        return {"status": "quota_exceeded", "message": "Gemini quota exceeded", "retry_after": retry_after}
+    if "401" in text or "UNAUTHENTICATED" in text or "API key not valid" in text:
+        return {"status": "invalid_api_key", "message": "Gemini API key was rejected", "retry_after": None}
+    if "403" in text or "PERMISSION_DENIED" in text:
+        return {
+            "status": "invalid_api_key",
+            "message": "Gemini API key does not have permission for this model",
+            "retry_after": None,
+        }
+    if "404" in text or "NOT_FOUND" in text:
+        return {"status": "invalid_model", "message": "Configured Gemini model was not found", "retry_after": None}
+
+    return {"status": "unavailable", "message": "Gemini is temporarily unavailable", "retry_after": None}
 
 
 class Chatbot:
@@ -131,6 +240,16 @@ class Chatbot:
             logger.warning(self.gemini_error)
             return
 
+        # Log confirmation that a key was actually picked up, without ever
+        # printing the key itself — useful for verifying "is my .env even
+        # being read" without a debugger, while staying safe to leave in
+        # production logs.
+        if len(self.gemini_api_key) > 8:
+            masked_key = f"{self.gemini_api_key[:4]}…{self.gemini_api_key[-4:]} ({len(self.gemini_api_key)} chars)"
+        else:
+            masked_key = "****"
+        logger.info("GEMINI_API_KEY loaded from environment: %s", masked_key)
+
         if genai is None:
             self.gemini_error = (
                 "Gemini SDK is not installed/importable ('google-generativeai'). "
@@ -139,13 +258,31 @@ class Chatbot:
             logger.warning(self.gemini_error)
             return
 
+        # Catch a still-configured, now-retired model before it ever makes
+        # a request, rather than letting every single chat message fail
+        # with a "quota exceeded" error that's actually a shutdown, not a
+        # rate limit (see DEPRECATED_GEMINI_MODELS above for why the two
+        # look identical in the logs).
+        if self.gemini_model_name in DEPRECATED_GEMINI_MODELS:
+            retirement_reason = DEPRECATED_GEMINI_MODELS[self.gemini_model_name]
+            logger.warning(
+                "GEMINI_MODEL is set to '%s', which is %s and can no longer serve requests "
+                "(this is what produces a 429 with a free-tier 'limit: 0' on every call, "
+                "which looks like ordinary throttling but never recovers). Automatically "
+                "using '%s' instead for this run. To silence this warning, update GEMINI_MODEL "
+                "in your .env file.",
+                self.gemini_model_name, retirement_reason, FALLBACK_GEMINI_MODEL,
+            )
+            self.gemini_model_name = FALLBACK_GEMINI_MODEL
+
         try:
             genai.configure(api_key=self.gemini_api_key)
             self.gemini_model = genai.GenerativeModel(self.gemini_model_name)
             self.gemini_ready = True
             logger.info("Gemini initialized successfully using model '%s'.", self.gemini_model_name)
         except Exception as exc:
-            self.gemini_error = f"Gemini SDK initialization failed: {exc}"
+            classification = _classify_gemini_exception(exc)
+            self.gemini_error = f"Gemini SDK initialization failed ({classification['status']}): {exc}"
             logger.exception("Gemini initialization failed: %s", self.gemini_error)
 
     def confidence_score(self, logits):
@@ -272,11 +409,19 @@ class Chatbot:
         question: str,
         conversation_history: Optional[List[Dict[str, Any]]] = None,
         uploaded_files: Optional[List[Any]] = None,
-    ) -> tuple[Optional[str], Optional[str]]:
+    ) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
+        """Call Gemini and return ``(answer, error_info)``.
+
+        Exactly one of the two is set on return: ``answer`` is a non-empty,
+        non-whitespace string on success, or ``error_info`` is the
+        classification dict from ``_classify_gemini_exception`` (or an
+        equivalent hand-built dict for the non-exception failure modes
+        below, like "not configured" or "empty response").
+        """
         if not self.gemini_ready or self.gemini_model is None:
             reason = self.gemini_error or "Gemini was not initialized."
             logger.warning("Gemini call skipped: %s", reason)
-            return None, reason
+            return None, {"status": "not_configured", "message": reason, "retry_after": None}
 
         extracted_text_chunks: List[str] = []
         if uploaded_files:
@@ -306,17 +451,36 @@ class Chatbot:
                     max_output_tokens=1536,
                 ),
             )
-            answer = getattr(response, "text", "")
-            if answer:
-                return answer.strip(), None
-
-            reason = "Gemini returned an empty response body."
-            logger.warning(reason)
-            return None, reason
         except Exception as exc:
-            reason = f"Gemini request failed: {exc}"
-            logger.exception(reason)
-            return None, reason
+            classification = _classify_gemini_exception(exc)
+            logger.exception("Gemini request failed (%s): %s", classification["status"], exc)
+            return None, classification
+
+        # response.text is a *property* on the SDK's response object, not a
+        # plain attribute — if Gemini blocked the output (safety filters,
+        # no candidates returned, etc.) accessing it raises ValueError
+        # rather than being missing. getattr(..., default) only guards
+        # against AttributeError, so it silently does NOT catch that case;
+        # this try/except is what actually does.
+        try:
+            answer = getattr(response, "text", "") or ""
+        except Exception as exc:
+            logger.warning("Gemini response could not be read as text (likely content filtering): %s", exc)
+            return None, {
+                "status": "content_blocked",
+                "message": "Gemini declined to answer this request",
+                "retry_after": None,
+            }
+
+        # A whitespace-only string is not a usable answer — treat it the
+        # same as a genuinely empty response rather than sending blank
+        # text to the student as if Gemini had succeeded.
+        if answer.strip():
+            return answer.strip(), None
+
+        reason = "Gemini returned an empty response body."
+        logger.warning(reason)
+        return None, {"status": "empty_response", "message": reason, "retry_after": None}
 
     def predict(self, question: str) -> Dict[str, Any]:
         cleaned = preprocess_text(question)
@@ -372,6 +536,8 @@ class Chatbot:
             reason = self.gemini_error or "Gemini not initialized"
             logger.warning("Gemini fallback used because: %s", reason)
             response["source"] = "ML"
+            response["gemini_status"] = "not_configured"
+            response["gemini_message"] = "Gemini is not configured on this server."
             response["error"] = reason
             # Keep whatever answer ``predict`` already produced (dataset match or the
             # "could not understand" message) as the fallback rather than surfacing an
@@ -387,14 +553,43 @@ class Chatbot:
             response["intent"] = "Gemini-generated"
             response["confidence"] = "N/A"
             response["matched_question"] = None
-            response["answer"] = gemini_answer.strip()
+            response["answer"] = gemini_answer
             response["source"] = "Gemini"
+            response["gemini_status"] = "ok"
             return response
 
-        if gemini_error:
-            logger.warning("Gemini returned a failure reason: %s", gemini_error)
-            response["error"] = gemini_error
+        # gemini_answer is falsy, so gemini_error is guaranteed to be set —
+        # _call_gemini's contract is "exactly one of the two is non-None".
+        status = gemini_error["status"]
+        message = gemini_error["message"]
+        retry_after = gemini_error.get("retry_after")
 
+        logger.warning("Gemini returned a failure reason (%s): %s", status, message)
+        response["gemini_status"] = status
+        response["gemini_message"] = message
+        response["error"] = message
         response["source"] = "ML"
-        response["answer"] = response.get("answer") or "Gemini is unavailable right now. Please try again in a moment."
+
+        fallback_answer = response.get("answer") or (
+            "Gemini is unavailable right now. Please try again in a moment."
+        )
+
+        # Quota exhaustion is the one failure mode that's both common (free
+        # tier) and easy to mistake for "the chatbot is broken" if the UI
+        # only shows the ML fallback answer with no explanation. Prefixing
+        # the answer itself guarantees the message shows up wherever the
+        # frontend renders `answer`, without requiring any frontend changes.
+        if status == "quota_exceeded":
+            if retry_after:
+                retry_note = f" Please try again in about {int(retry_after) + 1} seconds."
+            else:
+                retry_note = " Please try again in a few minutes."
+            response["answer"] = (
+                "⚠️ Gemini quota exceeded." + retry_note +
+                " Here's an answer from our knowledge base in the meantime:\n\n" +
+                fallback_answer
+            )
+        else:
+            response["answer"] = fallback_answer
+
         return response
