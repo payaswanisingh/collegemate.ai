@@ -78,7 +78,7 @@ def dashboard():
 @app.route('/app', methods=['GET'])
 @login_required
 def chatbot_page():
-    return render_template('index.html')
+    return render_template('index.html', user=current_user)
 
 
 @app.route('/health', methods=['GET'])
@@ -102,15 +102,21 @@ def predict_legacy():
 @app.route('/chat', methods=['POST'])
 @login_required
 def chat():
-    data = request.get_json(force=True)
-    if not data or 'question' not in data:
-        logger.warning("Invalid request payload: %s", data)
-        return jsonify({"error": "Missing 'question' field in JSON payload."}), 400
+    if request.is_json:
+        data = request.get_json(force=True)
+        question = (data or {}).get('question')
+        uploaded_files = []
+    else:
+        question = request.form.get('question')
+        uploaded_files = list(request.files.getlist('files'))
 
-    question = data['question']
+    if not question:
+        logger.warning("Invalid request payload: %s", request.get_data(as_text=True))
+        return jsonify({"error": "Missing 'question' field in the request."}), 400
+
     logger.info("Chat request: %s", question)
     try:
-        response = chatbot.predict(question)
+        response = chatbot.answer_question(question, uploaded_files=uploaded_files)
         return jsonify(response)
     except Exception as exc:
         logger.exception("Chat prediction error: %s", exc)

@@ -55,13 +55,15 @@
             <nav class="sidebar-nav">
                 <div class="nav-label">Categories</div>
                 <div id="sidebarCategories" class="nav-list"></div>
+                <div class="nav-label" style="margin-top: 18px;">Recent conversations</div>
+                <div id="sidebarConversations" class="nav-list"></div>
             </nav>
 
             <div class="sidebar-profile">
                 <div class="profile-header" id="profileHeader">
-                    <div class="profile-avatar" id="profileAvatar">{{ (user.name[0] | upper) if user is defined and user and user.name else 'U' }}</div>
+                    <div class="profile-avatar" id="profileAvatar">{{ (user.full_name[0] | upper) if user is defined and user and user.full_name else 'U' }}</div>
                     <div class="profile-info">
-                        <div class="profile-name" id="profileName">{{ user.name if user is defined and user and user.name else 'Guest User' }}</div>
+                        <div class="profile-name" id="profileName">{{ user.full_name if user is defined and user and user.full_name else 'Guest User' }}</div>
                         <div class="profile-email" id="profileEmail">{{ user.email if user is defined and user and user.email else '' }}</div>
                     </div>
                 </div>
@@ -118,9 +120,11 @@
 
             <footer class="composer">
                 <div class="composer-card">
-                    <button class="composer-icon-btn" aria-label="Attach file" title="Attach file">
+                    <input id="fileInput" type="file" multiple accept=".pdf,.docx,.txt,.png,.jpg,.jpeg" hidden>
+                    <button id="attachFileBtn" class="composer-icon-btn" aria-label="Attach file" title="Attach file">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
                     </button>
+                    <div id="attachedFiles" class="attached-files"></div>
                     <textarea id="questionInput" class="message-input" placeholder="Ask anything about your university..." rows="1"></textarea>
                     <button class="composer-icon-btn" aria-label="Voice input" title="Voice input">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
@@ -181,7 +185,7 @@
                 <div class="settings-section">
                     <div class="settings-section-title">Data</div>
                     <button class="settings-button" id="clearChatBtn">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 4 21 4 23 6 23 20a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V6"></polyline><line x1="19" y1="4" x2="5" y2="20"></line><line x1="5" y1="4" x2="19" y2="20"></line></svg>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v5"></path><path d="M14 11v5"></path></svg>
                         Clear conversation
                     </button>
                 </div>

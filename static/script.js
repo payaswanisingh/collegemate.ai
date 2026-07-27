@@ -17,12 +17,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const settingsPanel = document.getElementById('settingsPanel');
     const settingsScrim = settingsPanel.querySelector('.settings-scrim');
     const sidebarCategories = document.getElementById('sidebarCategories');
+    const sidebarConversations = document.getElementById('sidebarConversations');
     const clearChatBtn = document.getElementById('clearChatBtn');
     const themeControl = document.getElementById('themeControl');
     const accentControl = document.getElementById('accentControl');
     const fontSizeControl = document.getElementById('fontSizeControl');
     const logoutBtn = document.getElementById('logoutBtn');
     const toast = document.getElementById('toast');
+    const attachFileBtn = document.getElementById('attachFileBtn');
+    const fileInput = document.getElementById('fileInput');
+    const attachedFiles = document.getElementById('attachedFiles');
 
     // ===== Icon library (Lucide-style inline SVGs, no emojis) =====
     const icons = {
@@ -61,6 +65,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ===== State =====
     let messageCount = 0;
+    let currentConversationId = null;
+    let selectedFiles = [];
 
     // ===== Storage Keys =====
     const THEME_KEY = 'campusmate-theme';
@@ -80,6 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
         syncSettingsUI();
         setInterval(updateClock, 60 * 1000);
         setInterval(updateDate, 1000);
+        loadChatHistory();
     }
 
     // ===== Clock & Date =====
@@ -366,6 +373,23 @@ document.addEventListener('DOMContentLoaded', () => {
         return typingRow;
     }
 
+    function renderAttachedFiles() {
+        if (!attachedFiles) return;
+        attachedFiles.innerHTML = '';
+        if (!selectedFiles.length) {
+            attachedFiles.classList.remove('visible');
+            return;
+        }
+
+        attachedFiles.classList.add('visible');
+        selectedFiles.forEach((file) => {
+            const chip = document.createElement('div');
+            chip.className = 'attachment-chip';
+            chip.textContent = file.name;
+            attachedFiles.appendChild(chip);
+        });
+    }
+
     // ===== Welcome Screen =====
     function renderWelcomePrompts() {
         welcomePrompts.innerHTML = '';
@@ -401,7 +425,78 @@ document.addEventListener('DOMContentLoaded', () => {
     function clearChat() {
         chatList.innerHTML = '';
         messageCount = 0;
+        currentConversationId = null;
         showWelcomeScreen();
+    }
+
+    async function startNewChat() {
+        try {
+            const response = await fetch('/chat/new', { method: 'POST' });
+            const data = await response.json();
+            const newConversationId = data.conversation_id || null;
+            currentConversationId = newConversationId;
+            chatList.innerHTML = '';
+            messageCount = 0;
+            showWelcomeScreen();
+            showToast('Started a new chat');
+        } catch (error) {
+            clearChat();
+            showToast('Unable to start a new chat');
+        }
+    }
+
+    function renderSidebarConversations(conversations) {
+        if (!sidebarConversations) return;
+        sidebarConversations.innerHTML = '';
+
+        conversations.forEach((conversation) => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'nav-item conversation-item';
+            item.innerHTML = `
+                <span class="conversation-title">${escapeHtml(conversation.title || 'New chat')}</span>
+                <span class="conversation-meta">${conversation.message_count || 0} messages</span>
+            `;
+            item.addEventListener('click', () => {
+                currentConversationId = conversation.conversation_id;
+                renderConversationMessages(conversation);
+                toggleSidebar(false);
+            });
+            sidebarConversations.appendChild(item);
+        });
+    }
+
+    function renderConversationMessages(conversation) {
+        chatList.innerHTML = '';
+        messageCount = 0;
+        const messages = conversation.messages || [];
+        messages.forEach((item) => {
+            addMessage('user', item.question, new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+            addMessage('assistant', item.answer, item.source ? `${item.source} • ${new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'CampusMate AI');
+            messageCount += 2;
+        });
+        if (messageCount > 0) {
+            hideWelcomeScreen();
+        } else {
+            showWelcomeScreen();
+        }
+    }
+
+    async function loadChatHistory() {
+        try {
+            const response = await fetch('/chat/history');
+            const data = await response.json();
+            const conversations = data.conversations || [];
+            renderSidebarConversations(conversations);
+            if (!conversations.length) {
+                clearChat();
+                return;
+            }
+            currentConversationId = conversations[0].conversation_id;
+            renderConversationMessages(conversations[0]);
+        } catch (error) {
+            clearChat();
+        }
     }
 
     async function sendQuestion() {
@@ -422,15 +517,22 @@ document.addEventListener('DOMContentLoaded', () => {
         sendBtn.disabled = true;
 
         try {
+            const payload = new FormData();
+            payload.append('question', question);
+            if (currentConversationId) {
+                payload.append('conversation_id', currentConversationId);
+            }
+            selectedFiles.forEach((file) => payload.append('files', file));
+
             const response = await fetch('/chat', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ question }),
+                body: payload,
             });
 
             const data = await response.json();
+            currentConversationId = data.conversation_id || currentConversationId;
             const answer = data.answer || data.error || 'Sorry, I could not answer that right now.';
-            const meta = data.intent ? `Intent: ${data.intent} • ${data.confidence || 'N/A'}` : 'CampusMate AI';
+            const meta = data.source ? `${data.source}` : 'CampusMate AI';
 
             if (typingRow.parentNode) {
                 chatList.removeChild(typingRow);
@@ -443,6 +545,11 @@ document.addEventListener('DOMContentLoaded', () => {
             addMessage('assistant', 'Unable to contact the backend. Please refresh or try again.', 'Error');
         } finally {
             sendBtn.disabled = false;
+            selectedFiles = [];
+            renderAttachedFiles();
+            if (fileInput) {
+                fileInput.value = '';
+            }
         }
     }
 
@@ -510,7 +617,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // New chat
         if (newChatBtn) {
-            newChatBtn.addEventListener('click', clearChat);
+            newChatBtn.addEventListener('click', startNewChat);
         }
 
         // Sidebar toggle
@@ -562,19 +669,36 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // Clear chat from settings
-        if (clearChatBtn) {
-            clearChatBtn.addEventListener('click', () => {
-                clearChat();
-                closeSettingsPanel();
-                showToast('Conversation cleared');
+        // Attach file flow
+        if (attachFileBtn && fileInput) {
+            attachFileBtn.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', () => {
+                selectedFiles = Array.from(fileInput.files || []);
+                renderAttachedFiles();
+                if (selectedFiles.length) {
+                    showToast(`${selectedFiles.length} file(s) ready to attach`);
+                }
             });
         }
 
-        // Logout (visual — does not alter backend/auth)
+        // Clear chat from settings
+        if (clearChatBtn) {
+            clearChatBtn.addEventListener('click', async () => {
+                try {
+                    await fetch('/chat/history', { method: 'DELETE' });
+                    clearChat();
+                    closeSettingsPanel();
+                    showToast('Conversation cleared');
+                } catch (error) {
+                    showToast('Unable to clear conversation');
+                }
+            });
+        }
+
+        // Logout is handled by the existing auth route.
         if (logoutBtn) {
             logoutBtn.addEventListener('click', () => {
-                showToast('Logout requires backend session handling');
+                window.location.href = '/logout';
             });
         }
 
