@@ -175,3 +175,5 @@ data/
 # Logs
 *.log
 training.log
+# Embedding models
+models/embeddings/
