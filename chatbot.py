@@ -12,7 +12,6 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 from docx import Document as DocxDocument
@@ -52,8 +51,8 @@ except ImportError:
     Unauthenticated = None
 
 from pypdf import PdfReader
-from sklearn.metrics.pairwise import cosine_similarity
 
+from services.semantic_search import search_semantic
 from utils import (
     load_vectorizer,
     load_label_encoder,
@@ -69,6 +68,10 @@ from model import ChatbotModel
 logger = logging.getLogger(__name__)
 
 load_dotenv()
+import os
+
+print("API KEY:", os.getenv("GEMINI_API_KEY"))
+print("MODEL:", os.getenv("GEMINI_MODEL"))
 
 # gemini-2.0-flash was Google's long-standing free-tier default, but it was
 # deprecated and fully shut down on June 1, 2026 (see
@@ -99,39 +102,41 @@ DEPRECATED_GEMINI_MODELS = {
 }
 
 GEMINI_SYSTEM_PROMPT = (
-    "You are CampusMate AI, a warm, knowledgeable university assistant who talks like a "
-    "helpful, articulate human — the same conversational quality students expect from "
-    "ChatGPT or Gemini. You are NOT a lookup tool and you should NEVER sound like you are "
-    "reading a line out of an FAQ database.\n\n"
-    "You will be given three things: (1) 'Campus knowledge context' pulled from the "
-    "university's internal records, (2) recent conversation history, and (3) the student's "
-    "current question.\n\n"
-    "How to use the campus knowledge context:\n"
-    "- If context is marked as RELEVANT, treat it as trustworthy grounding for facts (fees, "
-    "policies, dates, procedures, etc.), but rewrite and explain the information in your own "
-    "natural words — never copy it verbatim or just restate a single line. Elaborate, "
-    "clarify, and add helpful structure (headings/bullets) where useful.\n"
-    "- If context is marked as NOT RELEVANT or absent, ignore it completely. This means the "
-    "question is not about university-specific data, so answer it like a general-purpose "
-    "AI assistant using your own broad knowledge — the same way you'd answer on any topic "
-    "(technology, general knowledge, writing help, coding, current events, etc.). Do not "
-    "mention the university or the knowledge base at all in that case.\n\n"
-    "General style rules for every answer:\n"
-    "- Sound natural, conversational, and professional — never robotic or templated.\n"
-    "- Give a real explanation, not a one-liner, unless the student clearly just wants a "
-    "quick fact.\n"
-    "- Use short paragraphs, headings, and bullet points when it improves clarity, "
-    "especially for multi-part or detailed answers.\n"
-    "- When helpful, close with a brief summary or a suggestion for related information the "
-    "student might want next.\n"
-    "- Use the conversation history to understand follow-up questions (e.g. 'what about "
-    "hostel fees?' or 'explain that more simply') without asking the student to repeat "
-    "themselves."
+    "You are CampusMate AI, a warm and knowledgeable university assistant for students. "
+    "Your job is to answer university, college, admissions, academics, fees, facilities, placements, "
+    "student life, and education-related questions in a natural, helpful way.\n\n"
+    "Response style:\n"
+    "- Understand the user's intention before answering. Respond to what they are trying to know, not just the literal words.\n"
+    "- Answer like a friendly university counselor speaking naturally to a student.\n"
+    "- Match the length of the user's question. For simple questions, reply in a short paragraph of about 3-5 lines or 50-80 words.\n"
+    "- For detailed questions, use short bullet points or headings only when they improve readability.\n"
+    "- Avoid textbook definitions, brochure-style descriptions, and unnecessary explanation.\n"
+    "- Focus on practical information and the student experience rather than listing buildings or infrastructure unless the user asks.\n"
+    "- Start with the most useful information immediately. Do not begin with phrases like 'A university campus is...' or 'Campus refers to...'.\n"
+    "- Use warm, engaging, and professional language that feels human and conversational.\n"
+    "- Keep answers concise, clear, and impactful.\n"
+    "- If the user asks a follow-up, continue naturally without repeating previous information or greeting them again.\n"
+    "- Greet the user only once at the beginning of a new conversation. Never greet again in the same chat.\n"
+    "- Do not end every answer with generic follow-up questions. Ask one only when it genuinely helps the conversation.\n\n"
+    "Knowledge grounding:\n"
+    "- Use the provided campus context as the main source of truth when it is relevant.\n"
+    "- If semantic search provides university-specific information, incorporate it smoothly into the answer instead of repeating it mechanically.\n"
+    "- If no university-specific context is available, still provide a high-quality general answer without mentioning that context was unavailable.\n"
+    "- Do not mention 'retrieved context' or 'knowledge base'.\n"
+    "- Do not invent details or add generic examples that are not supported by the context.\n"
+    "- If the information is not available, say so politely and clearly.\n"
+    "- If the system is unavailable or an API error occurs, do not expose technical failure details. Instead, give a calm, user-friendly response and naturally use the available knowledge-base answer.\n\n"
+    "Scope and boundaries:\n"
+    "- Stay focused on university, college, admissions, academics, fees, placements, facilities, student services, and student-life topics only.\n"
+    "- Do not assume or force answers based on a specific university unless the user clearly mentions a university name or provides relevant university-specific context.\n"
+    "- For general questions about college life, admissions, courses, exams, placements, facilities, or student activities, provide a balanced answer that applies to universities in general.\n"
+    "- Only use specific university information when the user asks about that particular university or when relevant university data is available.\n"
+    "- If the user asks something unrelated, respond with this exact message: \"I'm here to help with university and college-related questions. Please ask me something about admissions, academics, fees, facilities, placements, student life, or education.\""
 )
 
 CONFIDENCE_THRESHOLD = 15.0
-SIMILARITY_THRESHOLD = 0.12
-CONTEXT_RELEVANCE_THRESHOLD = 0.12
+SIMILARITY_THRESHOLD = 0.8
+CONTEXT_RELEVANCE_THRESHOLD = 0.8
 TOP_K_CONTEXT_ROWS = 4
 
 # Pulls a human-readable retry hint out of google-api-core's exception
@@ -278,6 +283,7 @@ class Chatbot:
         try:
             genai.configure(api_key=self.gemini_api_key)
             self.gemini_model = genai.GenerativeModel(self.gemini_model_name)
+            print("Model:", self.gemini_model_name)
             self.gemini_ready = True
             logger.info("Gemini initialized successfully using model '%s'.", self.gemini_model_name)
         except Exception as exc:
@@ -291,16 +297,26 @@ class Chatbot:
         return confidence * 100
 
     def _find_best_dataset_match(self, vector) -> Dict[str, Any]:
-        similarity = cosine_similarity(vector, self.dataset_vectors)[0]
-        best_index = int(np.argmax(similarity))
-        best_similarity = float(similarity[best_index])
-        matched_row = self.df.iloc[best_index]
+        query_text = vector if isinstance(vector, str) else str(vector or "")
+        results = search_semantic(query_text, top_k=1)
+
+        if not results:
+            return {
+                "index": None,
+                "similarity": 0.0,
+                "matched_question": None,
+                "matched_category": None,
+                "answer": "",
+            }
+
+        best_result = results[0]
+        best_similarity = float(best_result.get("score", 0.0))
         return {
-            "index": best_index,
+            "index": best_result.get("row_index"),
             "similarity": best_similarity,
-            "matched_question": matched_row["question"],
-            "matched_category": matched_row["category"],
-            "answer": matched_row["answer"],
+            "matched_question": best_result.get("question"),
+            "matched_category": best_result.get("category"),
+            "answer": best_result.get("answer"),
         }
 
     def _get_relevant_context(self, question: str) -> tuple[str, bool, float]:
@@ -312,22 +328,28 @@ class Chatbot:
         can tell Gemini to rely on its own general knowledge instead of forcing campus data
         into the answer.
         """
-        cleaned = preprocess_text(question)
-        vector = self.vectorizer.transform([cleaned]).toarray()
-        similarity = cosine_similarity(vector, self.dataset_vectors)[0]
-        top_indices = np.argsort(similarity)[::-1][:TOP_K_CONTEXT_ROWS]
-        best_similarity = float(similarity[top_indices[0]]) if len(top_indices) else 0.0
-        is_relevant = best_similarity >= CONTEXT_RELEVANCE_THRESHOLD
+        results = search_semantic(question, top_k=TOP_K_CONTEXT_ROWS)
+        best_similarity = float(results[0].get("score", 0.0)) if results else 0.0
+        if not results or best_similarity < CONTEXT_RELEVANCE_THRESHOLD:
+            logger.info("Semantic retrieval rejected context for question=%s | top_score=%s", question, best_similarity)
+            return "", False, best_similarity
 
         context_lines = []
-        for idx in top_indices:
-            row = self.df.iloc[int(idx)]
+        for result in results:
             context_lines.append(
-                f"Category: {row['category']}\n"
-                f"Question: {row['question']}\n"
-                f"Answer guidance: {row['answer']}"
+                f"Category: {result.get('category', '')}\n"
+                f"Question: {result.get('question', '')}\n"
+                f"Answer guidance: {result.get('answer', '')}"
             )
-        return "\n\n".join(context_lines), is_relevant, best_similarity
+
+        logger.info(
+            "Semantic retrieval accepted question=%s | top_result=%s | similarity=%s | context_passed=%s",
+            question,
+            results[0].get("question"),
+            best_similarity,
+            bool(context_lines),
+        )
+        return "\n\n".join(context_lines), True, best_similarity
 
     def _extract_doc_text(self, uploaded_file) -> str:
         if not uploaded_file or not getattr(uploaded_file, "filename", None):
@@ -382,6 +404,7 @@ class Chatbot:
     ) -> str:
         context, is_relevant, _ = self._get_relevant_context(question)
         history = self._build_history_context(conversation_history)
+        logger.info("Gemini prompt context passed: %s", bool(context and is_relevant))
 
         if is_relevant:
             context_block = (
@@ -505,7 +528,7 @@ class Chatbot:
                 "answer": matched_row["answer"],
             }
 
-        match = self._find_best_dataset_match(vector)
+        match = self._find_best_dataset_match(question)
         similarity = match["similarity"]
         if similarity >= SIMILARITY_THRESHOLD or confidence >= CONFIDENCE_THRESHOLD:
             return {
@@ -524,24 +547,50 @@ class Chatbot:
             "answer": "Sorry, I could not understand your question. Please contact the administration.",
         }
 
+    def _get_safe_fallback_answer(self, fallback_response: Optional[Dict[str, Any]], status: Optional[str] = None) -> str:
+        """Return a user-friendly fallback answer that never exposes Gemini/API internals."""
+        fallback_answer = (fallback_response or {}).get("answer") or ""
+        if not fallback_answer:
+            return "I'm having trouble generating a response right now. Please try again in a moment."
+
+        cleaned = fallback_answer.strip()
+        lowered = cleaned.lower()
+
+        if not cleaned:
+            return "I'm having trouble generating a response right now. Please try again in a moment."
+
+        if (
+            "gemini" in lowered and (
+                "quota" in lowered
+                or "api" in lowered
+                or "model" in lowered
+                or "backend" in lowered
+                or "error" in lowered
+                or "rate limit" in lowered
+                or "technical" in lowered
+            )
+        ):
+            return "I’m having trouble generating a response right now. Please try again in a moment."
+
+        if lowered.startswith("sorry, i could not understand"):
+            return "I’m having trouble answering that clearly right now. Please try again in a moment."
+
+        return cleaned
+
     def answer_question(
         self,
         question: str,
         conversation_history: Optional[List[Dict[str, Any]]] = None,
         uploaded_files: Optional[List[Any]] = None,
     ) -> Dict[str, Any]:
-        response = self.predict(question)
-
         if not self.gemini_ready or self.gemini_model is None:
             reason = self.gemini_error or "Gemini not initialized"
             logger.warning("Gemini fallback used because: %s", reason)
+            response = self.predict(question)
             response["source"] = "ML"
             response["gemini_status"] = "not_configured"
             response["gemini_message"] = "Gemini is not configured on this server."
             response["error"] = reason
-            # Keep whatever answer ``predict`` already produced (dataset match or the
-            # "could not understand" message) as the fallback rather than surfacing an
-            # internal configuration error to the student.
             return response
 
         gemini_answer, gemini_error = self._call_gemini(
@@ -550,12 +599,16 @@ class Chatbot:
             uploaded_files=uploaded_files,
         )
         if gemini_answer:
-            response["intent"] = "Gemini-generated"
-            response["confidence"] = "N/A"
-            response["matched_question"] = None
-            response["answer"] = gemini_answer
-            response["source"] = "Gemini"
-            response["gemini_status"] = "ok"
+            response = {
+                "question": question,
+                "intent": "Gemini-generated",
+                "confidence": "N/A",
+                "matched_question": None,
+                "answer": gemini_answer,
+                "source": "Gemini",
+                "gemini_status": "ok",
+            }
+            logger.info("Final answer source=Gemini | question=%s", question)
             return response
 
         # gemini_answer is falsy, so gemini_error is guaranteed to be set —
@@ -565,31 +618,14 @@ class Chatbot:
         retry_after = gemini_error.get("retry_after")
 
         logger.warning("Gemini returned a failure reason (%s): %s", status, message)
+        response = self.predict(question)
         response["gemini_status"] = status
-        response["gemini_message"] = message
-        response["error"] = message
+        response["gemini_message"] = "Unable to generate a response right now."
+        response["error"] = "Unable to generate a response right now."
         response["source"] = "ML"
 
-        fallback_answer = response.get("answer") or (
-            "Gemini is unavailable right now. Please try again in a moment."
-        )
+        fallback_answer = self._get_safe_fallback_answer(response, status)
+        response["answer"] = fallback_answer
 
-        # Quota exhaustion is the one failure mode that's both common (free
-        # tier) and easy to mistake for "the chatbot is broken" if the UI
-        # only shows the ML fallback answer with no explanation. Prefixing
-        # the answer itself guarantees the message shows up wherever the
-        # frontend renders `answer`, without requiring any frontend changes.
-        if status == "quota_exceeded":
-            if retry_after:
-                retry_note = f" Please try again in about {int(retry_after) + 1} seconds."
-            else:
-                retry_note = " Please try again in a few minutes."
-            response["answer"] = (
-                "⚠️ Gemini quota exceeded." + retry_note +
-                " Here's an answer from our knowledge base in the meantime:\n\n" +
-                fallback_answer
-            )
-        else:
-            response["answer"] = fallback_answer
-
+        logger.info("Final answer source=ML | question=%s", question)
         return response
