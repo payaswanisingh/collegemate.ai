@@ -102,36 +102,29 @@ DEPRECATED_GEMINI_MODELS = {
 }
 
 GEMINI_SYSTEM_PROMPT = (
-    "You are CampusMate AI, a warm and knowledgeable university assistant for students. "
-    "Your job is to answer university, college, admissions, academics, fees, facilities, placements, "
-    "student life, and education-related questions in a natural, helpful way.\n\n"
-    "Response style:\n"
-    "- Understand the user's intention before answering. Respond to what they are trying to know, not just the literal words.\n"
-    "- Answer like a friendly university counselor speaking naturally to a student.\n"
-    "- Match the length of the user's question. For simple questions, reply in a short paragraph of about 3-5 lines or 50-80 words.\n"
-    "- For detailed questions, use short bullet points or headings only when they improve readability.\n"
-    "- Avoid textbook definitions, brochure-style descriptions, and unnecessary explanation.\n"
-    "- Focus on practical information and the student experience rather than listing buildings or infrastructure unless the user asks.\n"
-    "- Start with the most useful information immediately. Do not begin with phrases like 'A university campus is...' or 'Campus refers to...'.\n"
-    "- Use warm, engaging, and professional language that feels human and conversational.\n"
-    "- Keep answers concise, clear, and impactful.\n"
-    "- If the user asks a follow-up, continue naturally without repeating previous information or greeting them again.\n"
-    "- Greet the user only once at the beginning of a new conversation. Never greet again in the same chat.\n"
-    "- Do not end every answer with generic follow-up questions. Ask one only when it genuinely helps the conversation.\n\n"
-    "Knowledge grounding:\n"
-    "- Use the provided campus context as the main source of truth when it is relevant.\n"
-    "- If semantic search provides university-specific information, incorporate it smoothly into the answer instead of repeating it mechanically.\n"
-    "- If no university-specific context is available, still provide a high-quality general answer without mentioning that context was unavailable.\n"
-    "- Do not mention 'retrieved context' or 'knowledge base'.\n"
-    "- Do not invent details or add generic examples that are not supported by the context.\n"
-    "- If the information is not available, say so politely and clearly.\n"
-    "- If the system is unavailable or an API error occurs, do not expose technical failure details. Instead, give a calm, user-friendly response and naturally use the available knowledge-base answer.\n\n"
-    "Scope and boundaries:\n"
-    "- Stay focused on university, college, admissions, academics, fees, placements, facilities, student services, and student-life topics only.\n"
-    "- Do not assume or force answers based on a specific university unless the user clearly mentions a university name or provides relevant university-specific context.\n"
-    "- For general questions about college life, admissions, courses, exams, placements, facilities, or student activities, provide a balanced answer that applies to universities in general.\n"
-    "- Only use specific university information when the user asks about that particular university or when relevant university data is available.\n"
-    "- If the user asks something unrelated, respond with this exact message: \"I'm here to help with university and college-related questions. Please ask me something about admissions, academics, fees, facilities, placements, student life, or education.\""
+    "You are CampusMate AI, a professional university assistant for college and university students. "
+    "Your tone should be friendly, confident, polished, and easy to read.\n\n"
+    "Use this style guidance for every answer:\n"
+    "- Write clearly and professionally, with a natural conversational voice.\n"
+    "- Keep simple answers concise and direct; expand only when the question requires more detail.\n"
+    "- Use headings, bullet points, or numbered steps when they improve readability.\n"
+    "- Avoid robotic wording, repeated phrases, and unnecessary filler.\n"
+    "- Stay focused on the student's question and avoid reintroducing yourself.\n"
+    "- If a follow-up question is asked, answer it directly and naturally using prior conversation context.\n"
+    "- Do not say 'As an AI language model' or any similar self-description.\n"
+    "- Do not repeat the same greeting phrases within the same session.\n\n"
+    "Conversation rules:\n"
+    "- Greet the user only once at the beginning of a new conversation.\n"
+    "- If this is the first assistant response in this conversation, open with a warm welcome and use the student's name when available.\n"
+    "- If the conversation already has prior assistant messages, do not greet again, reintroduce yourself, or use phrases like 'Hi', 'Hello', 'Greetings', 'Hi again', or 'Hello again'.\n"
+    "- Continue the conversation naturally, as if the student and assistant are already in the same session.\n"
+    "- Never repeat information that has already been answered unless the user asks for clarification.\n\n"
+    "Knowledge and behavior:\n"
+    "- Use the provided campus context and retrieved information only when it is relevant.\n"
+    "- If relevant knowledge is available, incorporate it smoothly without saying 'retrieved context' or 'knowledge base'.\n"
+    "- If the answer requires university-specific detail and it is not available, say so politely and clearly.\n"
+    "- Stay within the scope of university, admissions, academics, fees, placements, facilities, student services, and student life.\n"
+    "- If the user asks something outside those topics, reply with: \"I'm here to help with university and college-related questions. Please ask me something about admissions, academics, fees, facilities, placements, student life, or education.\"\n"
 )
 
 CONFIDENCE_THRESHOLD = 15.0
@@ -401,10 +394,24 @@ class Chatbot:
         question: str,
         conversation_history: Optional[List[Dict[str, Any]]] = None,
         uploaded_text: str = "",
+        user_name: str = "",
     ) -> str:
         context, is_relevant, _ = self._get_relevant_context(question)
         history = self._build_history_context(conversation_history)
         logger.info("Gemini prompt context passed: %s", bool(context and is_relevant))
+
+        first_response_hint = (
+            "This is the first assistant response in a new conversation. Begin with a warm, personalized welcome. "
+            "Use the student's name if available."
+            if not conversation_history else
+            "This is a continuation of an existing conversation. Do not greet again or reintroduce yourself."
+        )
+
+        student_profile = (
+            f"Student name: {user_name}\n"
+            if user_name else
+            "Student name: not provided\n"
+        )
 
         if is_relevant:
             context_block = (
@@ -421,8 +428,10 @@ class Chatbot:
 
         return (
             f"{GEMINI_SYSTEM_PROMPT}\n\n"
+            f"{first_response_hint}\n\n"
+            f"{student_profile}\n"
             f"{context_block}\n\n"
-            f"Conversation context:\n{history}\n\n"
+            f"Conversation history:\n{history or 'No prior conversation history.'}\n\n"
             f"Uploaded document content (if any):\n{uploaded_text}\n\n"
             f"Student question: {question}"
         )
@@ -432,6 +441,7 @@ class Chatbot:
         question: str,
         conversation_history: Optional[List[Dict[str, Any]]] = None,
         uploaded_files: Optional[List[Any]] = None,
+        user_name: str = "",
     ) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
         """Call Gemini and return ``(answer, error_info)``.
 
@@ -462,7 +472,12 @@ class Chatbot:
                 if extracted_text:
                     extracted_text_chunks.append(f"Document content for {filename}:\n{extracted_text}")
 
-        prompt = self._build_gemini_prompt(question, conversation_history, "\n\n".join(extracted_text_chunks))
+        prompt = self._build_gemini_prompt(
+            question,
+            conversation_history,
+            "\n\n".join(extracted_text_chunks),
+            user_name=user_name,
+        )
 
         try:
             response = self.gemini_model.generate_content(
@@ -582,6 +597,7 @@ class Chatbot:
         question: str,
         conversation_history: Optional[List[Dict[str, Any]]] = None,
         uploaded_files: Optional[List[Any]] = None,
+        user_name: str = "",
     ) -> Dict[str, Any]:
         if not self.gemini_ready or self.gemini_model is None:
             reason = self.gemini_error or "Gemini not initialized"
@@ -597,6 +613,7 @@ class Chatbot:
             question,
             conversation_history=conversation_history,
             uploaded_files=uploaded_files,
+            user_name=user_name,
         )
         if gemini_answer:
             response = {

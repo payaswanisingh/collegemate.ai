@@ -248,6 +248,16 @@ def chat():
     if conversation is None:
         return jsonify({"error": "Conversation not found."}), 404
 
+    conversation_history = [
+        {
+            "question": message.question,
+            "answer": message.answer,
+            "created_at": message.created_at.isoformat(),
+        }
+        for message in conversation.messages.order_by(ChatMessage.created_at.asc()).all()
+    ]
+    user_name = current_user.full_name or ""
+
     # Idempotency: if the frontend resubmitted the same client_id (double
     # click, retried fetch after a flaky connection, etc.) for this
     # conversation, return the answer that was already saved instead of
@@ -270,7 +280,12 @@ def chat():
 
     logger.info("Chat request: %s", question)
     try:
-        response = chatbot.answer_question(question, uploaded_files=uploaded_files)
+        response = chatbot.answer_question(
+            question,
+            conversation_history=conversation_history,
+            uploaded_files=uploaded_files,
+            user_name=user_name,
+        )
     except Exception as exc:
         logger.exception("Chat prediction error: %s", exc)
         return jsonify({"error": "Internal server error during prediction."}), 500

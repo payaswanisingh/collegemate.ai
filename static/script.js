@@ -3,11 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const questionInput = document.getElementById('questionInput');
     const sendBtn = document.getElementById('sendBtn');
     const chatList = document.getElementById('chatList');
-    const welcomeScreen = document.getElementById('welcomeScreen');
-    const welcomePrompts = document.getElementById('welcomePrompts');
-    const sidebarToggle = document.getElementById('sidebarToggle');
     const sidebarPanel = document.getElementById('sidebarPanel');
-    const sidebarScrim = document.getElementById('sidebarScrim');
     const newChatBtn = document.getElementById('newChatBtn');
     const themeToggle = document.getElementById('themeToggle');
     const clock = document.getElementById('clock');
@@ -17,12 +13,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const settingsPanel = document.getElementById('settingsPanel');
     const settingsScrim = settingsPanel.querySelector('.settings-scrim');
     const sidebarCategories = document.getElementById('sidebarCategories');
+    const chatHistoryList = document.getElementById('chatHistoryList');
     const clearChatBtn = document.getElementById('clearChatBtn');
     const themeControl = document.getElementById('themeControl');
     const accentControl = document.getElementById('accentControl');
     const fontSizeControl = document.getElementById('fontSizeControl');
     const logoutBtn = document.getElementById('logoutBtn');
+    const fileInput = document.getElementById('fileInput');
+    const fileUploadBtn = document.getElementById('fileUploadBtn');
+    const filePreview = document.getElementById('filePreview');
+    const filePreviewName = document.getElementById('filePreviewName');
+    const removeFileBtn = document.getElementById('removeFileBtn');
+    const logoutConfirmModal = document.getElementById('logoutConfirmModal');
+    const cancelLogoutBtn = document.getElementById('cancelLogoutBtn');
+    const confirmLogoutBtn = document.getElementById('confirmLogoutBtn');
     const toast = document.getElementById('toast');
+    let selectedFiles = [];
 
     // ===== Icon library (Lucide-style inline SVGs, no emojis) =====
     const icons = {
@@ -38,17 +44,6 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // ===== Data =====
-    const welcomeTopics = [
-        { icon: icons.admissions, title: 'Admission Process', query: 'Admission Process' },
-        { icon: icons.fees, title: 'Fee Structure', query: 'Fee Structure' },
-        { icon: icons.scholarships, title: 'Scholarships', query: 'Scholarships' },
-        { icon: icons.hostel, title: 'Hostel', query: 'Hostel Facilities' },
-        { icon: icons.library, title: 'Library', query: 'Library Timings' },
-        { icon: icons.placements, title: 'Placements', query: 'Placement Cell' },
-        { icon: icons.attendance, title: 'Attendance', query: 'Attendance Policy' },
-        { icon: icons.examinations, title: 'Examinations', query: 'Exam Dates' },
-    ];
-
     const categories = [
         { icon: icons.fees, name: 'Fees', query: 'Fee Structure' },
         { icon: icons.examinations, name: 'Examinations', query: 'Exam Dates' },
@@ -59,13 +54,17 @@ document.addEventListener('DOMContentLoaded', () => {
         { icon: icons.campusLife, name: 'Campus Life', query: 'Student Services' },
     ];
 
-    // ===== State =====
-    let messageCount = 0;
-
     // ===== Storage Keys =====
     const THEME_KEY = 'campusmate-theme';
     const ACCENT_KEY = 'campusmate-accent';
     const FONT_SIZE_KEY = 'campusmate-font-size';
+    const WELCOME_STORAGE_KEY = 'campusmate-welcome-displayed';
+
+    // ===== State =====
+    let messageCount = 0;
+    let currentConversationId = null;
+    let conversationsCache = [];
+    let welcomeMessageShown = false;
 
     // ===== Initialize =====
     function init() {
@@ -74,10 +73,10 @@ document.addEventListener('DOMContentLoaded', () => {
         applyStoredFontSize();
         updateClock();
         updateDate();
-        renderWelcomePrompts();
         renderSidebarCategories();
         setupEventListeners();
         syncSettingsUI();
+        fetchChatHistory(false);
         setInterval(updateClock, 60 * 1000);
         setInterval(updateDate, 1000);
     }
@@ -171,6 +170,159 @@ document.addEventListener('DOMContentLoaded', () => {
         syncSettingsUI();
     }
 
+    function createClientId() {
+        if (window.crypto && crypto.randomUUID) {
+            return crypto.randomUUID();
+        }
+        return `cid-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+    }
+
+    function setActiveHistoryItem(conversationId) {
+        if (!chatHistoryList) return;
+        chatHistoryList.querySelectorAll('.history-item').forEach((item) => {
+            item.classList.toggle('active', item.dataset.conversationId === String(conversationId));
+        });
+    }
+
+    function renderHistoryList(conversations) {
+        if (!chatHistoryList) return;
+        chatHistoryList.innerHTML = '';
+
+        if (!conversations || conversations.length === 0) {
+            chatHistoryList.innerHTML = '<div class="history-empty">No saved conversations yet.</div>';
+            return;
+        }
+
+        conversations.forEach((conversation) => {
+            const item = document.createElement('div');
+            item.className = 'history-item';
+            item.dataset.conversationId = conversation.conversation_id;
+            item.innerHTML = `
+                <button class="history-item-main" type="button">
+                    <span class="history-item-title">${escapeHtml(conversation.title)}</span>
+                </button>
+                <button class="history-delete-btn" type="button" aria-label="Delete conversation" title="Delete conversation">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                </button>
+            `;
+
+            const mainButton = item.querySelector('.history-item-main');
+            const deleteButton = item.querySelector('.history-delete-btn');
+
+            mainButton.addEventListener('click', () => {
+                const selected = conversationsCache.find((c) => c.conversation_id === conversation.conversation_id);
+                if (selected) {
+                    loadConversation(selected);
+                    setActiveHistoryItem(selected.conversation_id);
+                }
+            });
+
+            deleteButton.addEventListener('click', async (event) => {
+                event.stopPropagation();
+                const targetId = conversation.conversation_id;
+                const confirmed = window.confirm(`Delete "${conversation.title || 'this conversation'}"?`);
+                if (!confirmed) return;
+
+                try {
+                    const response = await fetch(`/chat/history/${targetId}`, { method: 'DELETE' });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(data.error || 'Unable to delete conversation.');
+                    }
+
+                    if (currentConversationId === targetId) {
+                        currentConversationId = null;
+                        clearChat();
+                        welcomeMessageShown = false;
+                    }
+
+                    await fetchChatHistory(false);
+                    showToast('Conversation deleted');
+                } catch (error) {
+                    console.error(error);
+                    showToast('Unable to delete conversation.');
+                }
+            });
+
+            chatHistoryList.appendChild(item);
+        });
+
+        setActiveHistoryItem(currentConversationId);
+    }
+
+    function loadConversation(conversation) {
+        if (!conversation) return;
+        currentConversationId = conversation.conversation_id;
+        clearChat();
+
+        if (conversation.messages && conversation.messages.length) {
+            conversation.messages.forEach((message) => {
+                addMessage('user', message.question, new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+                addMessage('assistant', message.answer, message.source || 'CampusMate AI');
+            });
+            messageCount = conversation.messages.length * 2;
+            scrollToBottom();
+        }
+
+        setActiveHistoryItem(currentConversationId);
+        scrollToBottom();
+    }
+
+    async function fetchChatHistory(loadLatest = true) {
+        if (!chatHistoryList) return;
+        try {
+            const response = await fetch('/chat/history');
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || 'Unable to load chat history.');
+            }
+
+            conversationsCache = Array.isArray(data.conversations) ? data.conversations : [];
+            renderHistoryList(conversationsCache);
+
+            if (loadLatest && !currentConversationId && conversationsCache.length) {
+                const latestWithMessages = conversationsCache.find((c) => c.message_count > 0) || conversationsCache[0];
+                if (latestWithMessages.message_count > 0) {
+                    loadConversation(latestWithMessages);
+                } else {
+                    currentConversationId = latestWithMessages.conversation_id;
+                }
+            }
+
+            if (!currentConversationId && messageCount === 0 && !welcomeMessageShown) {
+                showWelcomeAssistantMessage();
+            }
+        } catch (error) {
+            console.warn('Failed to load chat history:', error);
+            if (!currentConversationId && messageCount === 0 && !welcomeMessageShown) {
+                showWelcomeAssistantMessage();
+            }
+        }
+    }
+
+    async function startNewConversation() {
+        try {
+            const response = await fetch('/chat/new', { method: 'POST' });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || 'Unable to start new chat.');
+            }
+            currentConversationId = data.conversation_id;
+            clearChat();
+            welcomeMessageShown = false;
+            try {
+                sessionStorage.removeItem(WELCOME_STORAGE_KEY);
+            } catch (e) {
+                // Ignore storage failures.
+            }
+            showWelcomeAssistantMessage();
+            await fetchChatHistory(false);
+        } catch (error) {
+            showToast('Unable to start a new chat.');
+            console.error(error);
+        }
+    }
+
     // ===== Sync Settings UI state =====
     function syncSettingsUI() {
         const isLight = document.body.classList.contains('light');
@@ -215,7 +367,94 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function scrollToBottom() {
-        chatList.scrollTop = chatList.scrollHeight;
+        if (!chatList) return;
+
+        const scroll = () => {
+            if ('scrollTo' in chatList) {
+                chatList.scrollTo({ top: chatList.scrollHeight, behavior: 'smooth' });
+            } else {
+                chatList.scrollTop = chatList.scrollHeight;
+            }
+        };
+
+        if (window.requestAnimationFrame) {
+            window.requestAnimationFrame(scroll);
+        } else {
+            setTimeout(scroll, 0);
+        }
+    }
+
+    function updateFilePreview() {
+        if (!filePreview || !filePreviewName) return;
+        if (!selectedFiles.length) {
+            filePreview.classList.add('hidden');
+            filePreviewName.textContent = '';
+            return;
+        }
+
+        const names = selectedFiles.map((file) => file.name).join(', ');
+        filePreviewName.textContent = names;
+        filePreview.classList.remove('hidden');
+    }
+
+    function clearSelectedFiles() {
+        selectedFiles = [];
+        if (fileInput) {
+            fileInput.value = '';
+        }
+        updateFilePreview();
+    }
+
+    function clearClientChatState() {
+        currentConversationId = null;
+        conversationsCache = [];
+        messageCount = 0;
+        welcomeMessageShown = false;
+        selectedFiles = [];
+        if (chatList) {
+            chatList.innerHTML = '';
+        }
+        if (chatHistoryList) {
+            chatHistoryList.querySelectorAll('.history-item').forEach((item) => item.classList.remove('active'));
+        }
+        if (fileInput) {
+            fileInput.value = '';
+        }
+        updateFilePreview();
+        try {
+            sessionStorage.removeItem(WELCOME_STORAGE_KEY);
+        } catch (e) {
+            // Ignore storage failures.
+        }
+    }
+
+    function openLogoutConfirmModal() {
+        if (!logoutConfirmModal) return;
+        logoutConfirmModal.classList.remove('hidden');
+        logoutConfirmModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeLogoutConfirmModal() {
+        if (!logoutConfirmModal) return;
+        logoutConfirmModal.classList.add('hidden');
+        logoutConfirmModal.setAttribute('aria-hidden', 'true');
+    }
+
+    async function handleLogout() {
+        closeLogoutConfirmModal();
+        clearClientChatState();
+
+        try {
+            await fetch('/logout', {
+                method: 'GET',
+                credentials: 'same-origin',
+                headers: { Accept: 'text/html' },
+            });
+        } catch (error) {
+            // Ignore network errors and continue to the landing page.
+        }
+
+        window.location.assign('/');
     }
 
     // ===== Message Rendering =====
@@ -286,50 +525,54 @@ document.addEventListener('DOMContentLoaded', () => {
         return typingRow;
     }
 
-    // ===== Welcome Screen =====
-    function renderWelcomePrompts() {
-        welcomePrompts.innerHTML = '';
-        welcomeTopics.forEach((topic) => {
-            const card = document.createElement('button');
-            card.type = 'button';
-            card.className = 'welcome-card';
-            card.innerHTML = `
-                <div class="welcome-card-icon">${topic.icon}</div>
-                <div class="welcome-card-title">${topic.title}</div>
-            `;
-            card.addEventListener('click', () => {
-                questionInput.value = topic.query;
-                sendQuestion();
-            });
-            welcomePrompts.appendChild(card);
-        });
-    }
-
-    function showWelcomeScreen() {
-        if (welcomeScreen) {
-            welcomeScreen.classList.remove('hidden');
-        }
-    }
-
-    function hideWelcomeScreen() {
-        if (welcomeScreen) {
-            welcomeScreen.classList.add('hidden');
-        }
-    }
-
-    // ===== Chat Management =====
+    // ===== Welcome Message =====
     function clearChat() {
         chatList.innerHTML = '';
         messageCount = 0;
-        showWelcomeScreen();
+    }
+
+    function showWelcomeAssistantMessage() {
+        if (welcomeMessageShown) return;
+
+        const storedFlag = (() => {
+            try {
+                return sessionStorage.getItem(WELCOME_STORAGE_KEY);
+            } catch (e) {
+                return null;
+            }
+        })();
+        if (storedFlag === '1') {
+            welcomeMessageShown = true;
+            return;
+        }
+
+        const userName = window.CampusMateUser?.fullName || '';
+        const greeting = userName ? `👋 Hi, ${userName}!` : '👋 Hi there!';
+        const welcomeText = [
+            `${greeting}`,
+            'Welcome back to CampusMate AI.',
+            '',
+            "I'm your smart university assistant, here to help you navigate every aspect of campus life from admissions and academics to exams, scholarships, placements, hostel facilities, and student services.",
+            '',
+            'What would you like to explore today?'
+        ].join('\n');
+
+        addMessage('assistant', welcomeText, 'CampusMate AI');
+        welcomeMessageShown = true;
+        try {
+            sessionStorage.setItem(WELCOME_STORAGE_KEY, '1');
+        } catch (e) {
+            // Ignore storage failures.
+        }
     }
 
     async function sendQuestion() {
-        const question = questionInput.value.trim();
-        if (!question) return;
+        let question = questionInput.value.trim();
+        const hasFiles = selectedFiles.length > 0;
+        if (!question && !hasFiles) return;
 
-        if (messageCount === 0) {
-            hideWelcomeScreen();
+        if (!question && hasFiles) {
+            question = `Uploaded ${selectedFiles.length} attachment${selectedFiles.length > 1 ? 's' : ''}`;
         }
 
         messageCount++;
@@ -342,20 +585,51 @@ document.addEventListener('DOMContentLoaded', () => {
         sendBtn.disabled = true;
 
         try {
-            const response = await fetch('/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ question }),
-            });
+            let response;
+            if (hasFiles) {
+                const formData = new FormData();
+                formData.append('question', question);
+                if (currentConversationId) {
+                    formData.append('conversation_id', currentConversationId);
+                }
+                formData.append('client_id', createClientId());
+                selectedFiles.forEach((file) => {
+                    formData.append('files', file);
+                });
+
+                response = await fetch('/chat', {
+                    method: 'POST',
+                    body: formData,
+                });
+            } else {
+                response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        question,
+                        conversation_id: currentConversationId,
+                        client_id: createClientId(),
+                    }),
+                });
+            }
 
             const data = await response.json();
             const answer = data.answer || data.error || 'Sorry, I could not answer that right now.';
-            const meta = data.intent ? `Intent: ${data.intent} • ${data.confidence || 'N/A'}` : 'CampusMate AI';
 
             if (typingRow.parentNode) {
                 chatList.removeChild(typingRow);
             }
-            addMessage('assistant', answer, meta);
+            addMessage('assistant', answer, 'CampusMate AI');
+
+            if (data.conversation_id) {
+                currentConversationId = data.conversation_id;
+            }
+
+            if (hasFiles) {
+                clearSelectedFiles();
+            }
+
+            await fetchChatHistory(false);
         } catch (error) {
             if (typingRow.parentNode) {
                 chatList.removeChild(typingRow);
@@ -379,18 +653,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 questionInput.value = category.query;
                 questionInput.focus();
                 sendQuestion();
-                toggleSidebar(false);
             });
             sidebarCategories.appendChild(item);
         });
-    }
-
-    // ===== Sidebar Toggle (mobile) =====
-    function toggleSidebar(open) {
-        if (!sidebarPanel || !sidebarScrim) return;
-        sidebarPanel.classList.toggle('visible', open);
-        sidebarScrim.classList.toggle('visible', open);
-        sidebarToggle.setAttribute('aria-expanded', String(open));
     }
 
     // ===== Settings Drawer =====
@@ -423,6 +688,21 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         questionInput.addEventListener('input', autoResize);
 
+        if (fileUploadBtn && fileInput) {
+            fileUploadBtn.addEventListener('click', () => fileInput.click());
+        }
+
+        if (fileInput) {
+            fileInput.addEventListener('change', (event) => {
+                selectedFiles = Array.from(event.target.files || []);
+                updateFilePreview();
+            });
+        }
+
+        if (removeFileBtn) {
+            removeFileBtn.addEventListener('click', clearSelectedFiles);
+        }
+
         // Theme toggle (topbar icon)
         if (themeToggle) {
             themeToggle.addEventListener('click', toggleTheme);
@@ -430,16 +710,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // New chat
         if (newChatBtn) {
-            newChatBtn.addEventListener('click', clearChat);
-        }
-
-        // Sidebar toggle
-        if (sidebarToggle) {
-            sidebarToggle.addEventListener('click', () => toggleSidebar(true));
-        }
-
-        if (sidebarScrim) {
-            sidebarScrim.addEventListener('click', () => toggleSidebar(false));
+            newChatBtn.addEventListener('click', startNewConversation);
         }
 
         // Settings drawer
@@ -491,17 +762,35 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // Logout (visual — does not alter backend/auth)
         if (logoutBtn) {
-            logoutBtn.addEventListener('click', () => {
-                showToast('Logout requires backend session handling');
+            logoutBtn.addEventListener('click', openLogoutConfirmModal);
+        }
+
+        if (cancelLogoutBtn) {
+            cancelLogoutBtn.addEventListener('click', closeLogoutConfirmModal);
+        }
+
+        if (confirmLogoutBtn) {
+            confirmLogoutBtn.addEventListener('click', handleLogout);
+        }
+
+        if (logoutConfirmModal) {
+            logoutConfirmModal.addEventListener('click', (event) => {
+                if (event.target === logoutConfirmModal) {
+                    closeLogoutConfirmModal();
+                }
             });
         }
 
         // Close settings with Escape key
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && settingsPanel.classList.contains('visible')) {
-                closeSettingsPanel();
+            if (e.key === 'Escape') {
+                if (settingsPanel.classList.contains('visible')) {
+                    closeSettingsPanel();
+                }
+                if (logoutConfirmModal && !logoutConfirmModal.classList.contains('hidden')) {
+                    closeLogoutConfirmModal();
+                }
             }
         });
     }
